@@ -1,0 +1,9 @@
+@echo off
+cd /d "%~dp0"
+call .venv\Scripts\activate
+echo Iniciando servidor en puerto 8000...
+start "Uvicorn" cmd /c "uvicorn main:app --host 0.0.0.0 --port 8000"
+echo Esperando 3 segundos para que el servidor arranque...
+timeout /t 3 /nobreak >nul
+echo Iniciando túnel localhost.run...
+ssh -o ServerAliveInterval=30 -o ServerAliveCountMax=3 -o ExitOnForwardFailure=yes -N -R 80:127.0.0.1:8000 nokey@localhost.run

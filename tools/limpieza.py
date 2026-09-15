@@ -1,0 +1,50 @@
+import sqlite3
+from pathlib import Path
+
+from database.db import get_connection
+
+DB_PATH = Path(__file__).parent.parent / "hotel.db"
+
+HORARIOS_LIMPIEZA = {
+    "limpia": "La habitación está limpia y lista para check-in.",
+    "sucia": "La habitación necesita limpieza. Se asignará personal en las próximas 2 horas.",
+    "en_proceso": "La habitación está en proceso de limpieza. Estará lista en ~30 minutos.",
+    "mantenimiento": "La habitación está en mantenimiento. Consulte recepción para alternativas.",
+}
+
+
+def consultar_limpieza(habitacion_id: int) -> str:
+    conn = sqlite3.connect(str(DB_PATH))
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM habitaciones WHERE id = ?", (habitacion_id,))
+    habitacion = cursor.fetchone()
+    conn.close()
+
+    if not habitacion:
+        return f"No se encontró la habitación con ID {habitacion_id}."
+
+    estado = habitacion["estado_limpieza"]
+    mensaje_base = HORARIOS_LIMPIEZA.get(estado, f"Estado actual: {estado}")
+
+    return (
+        f"🏨 Habitación {habitacion['numero']} ({habitacion['tipo']}):\n"
+        f"- Estado de limpieza: {estado}\n"
+        f"- {mensaje_base}"
+    )
+
+
+def actualizar_estado_limpieza(habitacion_id: int, nuevo_estado: str) -> str:
+    validos = {"limpia", "sucia", "en_proceso", "mantenimiento"}
+    if nuevo_estado not in validos:
+        return f"Estado inválido. Use uno de: {', '.join(validos)}"
+
+    conn = sqlite3.connect(str(DB_PATH))
+    cursor = conn.cursor()
+    cursor.execute(
+        "UPDATE habitaciones SET estado_limpieza = ? WHERE id = ?",
+        (nuevo_estado, habitacion_id),
+    )
+    conn.commit()
+    conn.close()
+    return f"Estado de limpieza de la habitación {habitacion_id} actualizado a '{nuevo_estado}'."
