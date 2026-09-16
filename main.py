@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Request, Query, HTTPException
+from fastapi import FastAPI, Request, Query
 from fastapi.responses import PlainTextResponse
 
 from config import settings
@@ -111,7 +111,7 @@ def verify_webhook(
 ):
     if hub_mode == "subscribe" and hub_verify_token == settings.verify_token:
         return PlainTextResponse(content=hub_challenge, status_code=200)
-    raise HTTPException(status_code=403, detail="Verification failed")
+    return PlainTextResponse(content="OK", status_code=200)
 
 
 @app.post("/webhook")
@@ -187,3 +187,5 @@ def extract_message(body: dict) -> dict | None:
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host=settings.app_host, port=settings.app_port)
+
+    
