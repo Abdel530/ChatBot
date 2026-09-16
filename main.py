@@ -119,50 +119,57 @@ async def receive_webhook(request: Request):
     print(f"[POST /webhook] Petición recibida - 200 OK")
     try:
         body = await request.json()
+        print(f"[POST /webhook] Body recibido: {body}", flush=True)
     except Exception:
         print(f"[POST /webhook] Cuerpo inválido - 200 OK")
-        return {"status": "received"}
+        return {"status": "ok"}
 
-    msg = extract_message(body)
+    try:
+        msg = extract_message(body)
 
-    if msg:
-        phone = msg["from"]
-        text = msg["text"] or ""
+        if msg:
+            phone = msg["from"]
+            text = msg["text"] or ""
 
-        add_message(phone, "user", text)
+            add_message(phone, "user", text)
 
-        if text.strip().lower() == "reiniciar":
-            clear_session(phone)
-            send_whatsapp_message(phone, "¡Hola! Soy el asistente del Hotel Paraíso. En qué puedo ayudarte?")
-            print(f"[POST /webhook] {phone}: reiniciado - 200 OK")
-            return {"status": "received"}
+            if text.strip().lower() == "reiniciar":
+                clear_session(phone)
+                send_whatsapp_message(phone, "¡Hola! Soy el asistente del Hotel Paraíso. En qué puedo ayudarte?")
+                print(f"[POST /webhook] {phone}: reiniciado - 200 OK")
+                return {"status": "ok"}
 
-        result = chat_with_tools_and_session(text, phone, tools=TOOLS)
+            result = chat_with_tools_and_session(text, phone, tools=TOOLS)
 
-        response_text = result.get("text", "")
-        tool_calls = result.get("tool_calls", [])
+            response_text = result.get("text", "")
+            tool_calls = result.get("tool_calls", [])
 
-        if tool_calls:
-            for tc in tool_calls:
-                tool_name = tc["name"]
-                tool_args = tc["args"]
-                tool_result = execute_tool(tool_name, tool_args)
-                add_message(phone, "tool", f"{tool_name}: {tool_result}")
+            if tool_calls:
+                for tc in tool_calls:
+                    tool_name = tc["name"]
+                    tool_args = tc["args"]
+                    tool_result = execute_tool(tool_name, tool_args)
+                    add_message(phone, "tool", f"{tool_name}: {tool_result}")
 
-                gemini_result = chat_with_tools_and_session(
-                    f"El resultado de la herramienta {tool_name} es: {tool_result}. Responde al huésped de forma natural.",
-                    phone, tools=TOOLS,
-                )
-                response_text = gemini_result.get("text", tool_result)
+                    gemini_result = chat_with_tools_and_session(
+                        f"El resultado de la herramienta {tool_name} es: {tool_result}. Responde al huésped de forma natural.",
+                        phone, tools=TOOLS,
+                    )
+                    response_text = gemini_result.get("text", tool_result)
 
-        add_message(phone, "model", response_text)
-        await send_whatsapp_message(phone, response_text)
+            add_message(phone, "model", response_text)
+            await send_whatsapp_message(phone, response_text)
 
-        print(f"[WEBHOOK] {phone}: {text}")
-        print(f"[WEBHOOK] Response: {response_text[:100]}")
+            print(f"[WEBHOOK] {phone}: {text}")
+            print(f"[WEBHOOK] Response: {response_text[:100]}")
+
+    except Exception as e:
+        print(f"Error procesando mensaje: {e}", flush=True)
+        import traceback
+        traceback.print_exc()
 
     print(f"[POST /webhook] Procesado - 200 OK")
-    return {"status": "received"}
+    return {"status": "ok"}
 
 
 def extract_message(body: dict) -> dict | None:
