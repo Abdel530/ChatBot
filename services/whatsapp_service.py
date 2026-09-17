@@ -61,31 +61,60 @@ async def send_interactive_list(to_phone: str) -> dict | None:
         f"https://graph.facebook.com/{settings.whatsapp_api_version}"
         f"/{settings.whatsapp_phone_id}/messages"
     )
-    headers = {"Authorization": f"Bearer {settings.whatsapp_token}"}
-    sections = [
-        {
-            "title": "Opciones de Reserva",
-            "rows": [
-                {"id": "opt_reserva", "title": "Consultar mi reserva", "description": "Ver detalles, estado o código"},
-                {"id": "opt_checkin", "title": "Registrar hora de llegada", "description": "Check-in e información"},
-                {"id": "opt_servicios", "title": "Información de servicios", "description": "WiFi, desayuno, parking, horarios"},
-                {"id": "opt_cancelar", "title": "Cancelar reserva", "description": "Calcular penalización"},
-                {"id": "opt_recepcion", "title": "Hablar con recepción", "description": "Atención personalizada"},
-            ],
-        },
-    ]
+    headers = {
+        "Authorization": f"Bearer {settings.whatsapp_token}",
+        "Content-Type": "application/json",
+    }
     payload = {
         "messaging_product": "whatsapp",
+        "recipient_type": "individual",
         "to": to_phone,
         "type": "interactive",
         "interactive": {
             "type": "list",
-            "body": {"text": "Menú de opciones del Hotel Paraíso. Selecciona una opción:"},
-            "action": {
-                "button": "Ver Opciones",
-                "sections": sections,
+            "header": {
+                "type": "text",
+                "text": "Menú Principal"
             },
-        },
+            "body": {
+                "text": "Selecciona la opción que deseas consultar:"
+            },
+            "action": {
+                "button": "Ver opciones",
+                "sections": [
+                    {
+                        "title": "Gestiones",
+                        "rows": [
+                            {
+                                "id": "opt_reserva",
+                                "title": "Consultar reserva",
+                                "description": "Ver detalles de tu estancia"
+                            },
+                            {
+                                "id": "opt_checkin",
+                                "title": "Registrar llegada",
+                                "description": "Información de check-in"
+                            },
+                            {
+                                "id": "opt_servicios",
+                                "title": "Servicios del hotel",
+                                "description": "WiFi, desayuno y horarios"
+                            },
+                            {
+                                "id": "opt_cancelar",
+                                "title": "Cancelar reserva",
+                                "description": "Gestionar cancelación"
+                            },
+                            {
+                                "id": "opt_recepcion",
+                                "title": "Hablar con recepción",
+                                "description": "Atención personalizada"
+                            }
+                        ]
+                    }
+                ]
+            }
+        }
     }
     try:
         async with httpx.AsyncClient(timeout=10) as client:
@@ -93,7 +122,9 @@ async def send_interactive_list(to_phone: str) -> dict | None:
             response.raise_for_status()
             return response.json()
     except httpx.HTTPError as e:
-        print(f"Error sending interactive list to {to_phone}: {e}")
+        print(f"[WHATSAPP API Error] send_interactive_list to {to_phone}: {e}")
+        if hasattr(e, 'response') and e.response is not None:
+            print(f"[WHATSAPP API Error] Response body: {e.response.text}")
         return None
 
 
@@ -103,9 +134,13 @@ async def send_interactive_list_custom(to_phone: str, text_body: str, button_lab
         f"https://graph.facebook.com/{settings.whatsapp_api_version}"
         f"/{settings.whatsapp_phone_id}/messages"
     )
-    headers = {"Authorization": f"Bearer {settings.whatsapp_token}"}
+    headers = {
+        "Authorization": f"Bearer {settings.whatsapp_token}",
+        "Content-Type": "application/json",
+    }
     payload = {
         "messaging_product": "whatsapp",
+        "recipient_type": "individual",
         "to": to_phone,
         "type": "interactive",
         "interactive": {
@@ -123,7 +158,9 @@ async def send_interactive_list_custom(to_phone: str, text_body: str, button_lab
             response.raise_for_status()
             return response.json()
     except httpx.HTTPError as e:
-        print(f"Error sending interactive list to {to_phone}: {e}")
+        print(f"[WHATSAPP API Error] send_interactive_list_custom to {to_phone}: {e}")
+        if hasattr(e, 'response') and e.response is not None:
+            print(f"[WHATSAPP API Error] Response body: {e.response.text}")
         return None
 
 
