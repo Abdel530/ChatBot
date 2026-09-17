@@ -2,7 +2,12 @@ from fastapi import FastAPI, Request, Query
 from fastapi.responses import PlainTextResponse
 
 from config import settings
-from services.whatsapp_service import send_whatsapp_message, format_whatsapp_message
+from services.whatsapp_service import (
+    send_whatsapp_message,
+    send_interactive_buttons,
+    send_interactive_list,
+    format_whatsapp_message,
+)
 from services.session import add_message, get_history, clear_session
 from services.gemini_service import chat_with_tools_and_session, TOOLS, TOOL_HANDLERS, execute_tool, register_tool, process_message
 from tools.reservas import (
@@ -18,6 +23,8 @@ from tools.costos import consultar_costo_habitacion
 from google.genai.types import FunctionDeclaration
 
 app = FastAPI(title="Hotel WhatsApp Bot", version="0.2.0")
+
+WELCOME_TEXT = "¡Bienvenido al Hotel Paraíso! ¿En qué puedo ayudarte?"
 
 
 def _setup_tools():
@@ -127,41 +134,55 @@ async def receive_webhook(request: Request):
     try:
         msg = extract_message(body)
 
-        if msg:
-            phone = msg["from"]
-            text = msg["text"] or ""
+        if not msg:
+            return {"status": "ok"}
 
-            add_message(phone, "user", text)
+        phone = msg["from"]
+        message_type = msg.get("type", "text")
+        text = msg.get("text") or ""
+        selected_id = msg.get("selected_id")
 
-            if text.strip().lower() == "reiniciar":
-                clear_session(phone)
-                send_whatsapp_message(phone, "¡Hola! Soy el asistente del Hotel Paraíso. En qué puedo ayudarte?")
-                print(f"[POST /webhook] {phone}: reiniciado - 200 OK")
-                return {"status": "ok"}
+        if message_type == "interactive" and selected_id:
+            await _handle_interactive(phone, selected_id)
+            print(f"[POST /webhook] {phone}: interactive event - {selected_id} - 200 OK")
+            return {"status": "ok"}
 
-            result = chat_with_tools_and_session(text, phone, tools=TOOLS)
+        add_message(phone, "user", text)
 
-            response_text = result.get("text", "")
-            tool_calls = result.get("tool_calls", [])
+        if text.strip().lower() == "reiniciar":
+            clear_session(phone)
+            await send_whatsapp_message(phone, "¡Hola! Soy el asistente del Hotel Paraíso. En qué puedo ayudarte?")
+            print(f"[POST /webhook] {phone}: reiniciado - 200 OK")
+            return {"status": "ok"}
 
-            if tool_calls:
-                for tc in tool_calls:
-                    tool_name = tc["name"]
-                    tool_args = tc["args"]
-                    tool_result = execute_tool(tool_name, tool_args)
-                    add_message(phone, "tool", f"{tool_name}: {tool_result}")
+        if text.strip().lower() in ("hola", "menu"):
+            await _send_welcome_buttons(phone)
+            print(f"[POST /webhook] {phone}: bienvenida con botones - 200 OK")
+            return {"status": "ok"}
 
-                    gemini_result = chat_with_tools_and_session(
-                        f"El resultado de la herramienta {tool_name} es: {tool_result}. Responde al huésped de forma natural.",
-                        phone, tools=TOOLS,
-                    )
-                    response_text = gemini_result.get("text", tool_result)
+        result = chat_with_tools_and_session(text, phone, tools=TOOLS)
 
-            add_message(phone, "model", response_text)
-            await send_whatsapp_message(phone, response_text)
+        response_text = result.get("text", "")
+        tool_calls = result.get("tool_calls", [])
 
-            print(f"[WEBHOOK] {phone}: {text}")
-            print(f"[WEBHOOK] Response: {response_text[:100]}")
+        if tool_calls:
+            for tc in tool_calls:
+                tool_name = tc["name"]
+                tool_args = tc["args"]
+                tool_result = execute_tool(tool_name, tool_args)
+                add_message(phone, "tool", f"{tool_name}: {tool_result}")
+
+                gemini_result = chat_with_tools_and_session(
+                    f"El resultado de la herramienta {tool_name} es: {tool_result}. Responde al huésped de forma natural.",
+                    phone, tools=TOOLS,
+                )
+                response_text = gemini_result.get("text", tool_result)
+
+        add_message(phone, "model", response_text)
+        await send_whatsapp_message(phone, response_text)
+
+        print(f"[WEBHOOK] {phone}: {text}")
+        print(f"[WEBHOOK] Response: {response_text[:100]}")
 
     except Exception as e:
         print(f"Error procesando mensaje: {e}", flush=True)
@@ -172,6 +193,58 @@ async def receive_webhook(request: Request):
     return {"status": "ok"}
 
 
+async def _send_welcome_buttons(phone: str):
+    """Envía los botones de bienvenida al usuario."""
+    buttons = [
+        {"id": "btn_habitaciones", "title": "Ver Habitaciones"},
+        {"id": "btn_servicios", "title": "Servicios"},
+        {"id": "btn_contacto", "title": "Contacto"},
+    ]
+    await send_interactive_buttons(phone, WELCOME_TEXT, buttons)
+
+
+async def _handle_interactive(phone: str, selected_id: str):
+    """Maneja los eventos interactivos (botones presionados o listas seleccionadas)."""
+    if selected_id == "btn_habitaciones":
+        sections = [
+            {
+                "title": "Tipos de Habitación",
+                "rows": [
+                    {"id": "habitacion_sencilla", "title": "Habitación Sencilla", "description": "Habitación individual con cama queen size"},
+                    {"id": "habitacion_doble", "title": "Habitación Doble", "description": "Habitación doble con camas twin o cama king"},
+                    {"id": "habitacion_suite", "title": "Suite", "description": "Suite premium con sala de estar y vista al mar"},
+                ],
+            },
+        ]
+        await send_interactive_list(
+            phone,
+            "Selecciona el tipo de habitación que deseas:",
+            "Ver Habitaciones",
+            sections,
+        )
+    elif selected_id == "btn_servicios":
+        await send_whatsapp_message(
+            phone,
+            "Nuestros servicios incluyen: recepción 24h, limpieza diaria, restaurante, piscina, spa y estacionamiento. ¡Contáctanos para más detalles!",
+        )
+    elif selected_id == "btn_contacto":
+        await send_whatsapp_message(
+            phone,
+            "Puedes contactarnos al teléfono +52 123 456 7890 o por email a recepcion@hotelparaiso.com",
+        )
+    elif selected_id.startswith("habitacion_"):
+        habitacion_tipo = selected_id.replace("habitacion_", "").capitalize()
+        await send_whatsapp_message(
+            phone,
+            f"Hemso recibido interés en la habitación {habitacion_tipo}. Un asesor se pondrá en contacto contigo brevemente.",
+        )
+    else:
+        await send_whatsapp_message(
+            phone,
+            f"Opción seleccionada: {selected_id}. Gracias por tu interés.",
+        )
+
+
 def extract_message(body: dict) -> dict | None:
     try:
         entry = body["entry"][0]
@@ -179,11 +252,25 @@ def extract_message(body: dict) -> dict | None:
         if "messages" not in change:
             return None
         msg = change["messages"][0]
-        text_field = msg.get("text")
-        text = text_field.get("body", "") if isinstance(text_field, dict) else ""
+        msg_type = msg.get("type", "text")
+        text = ""
+        selected_id = None
+
+        if msg_type == "text":
+            text_field = msg.get("text")
+            text = text_field.get("body", "") if isinstance(text_field, dict) else ""
+        elif msg_type == "interactive":
+            interactive = msg.get("interactive", {})
+            if "button_reply" in interactive:
+                selected_id = interactive["button_reply"].get("id")
+            elif "list_reply" in interactive:
+                selected_id = interactive["list_reply"].get("id")
+
         return {
             "from": msg["from"],
             "text": text,
+            "selected_id": selected_id,
+            "type": msg_type,
             "message_id": msg["id"],
             "timestamp": msg["timestamp"],
         }
