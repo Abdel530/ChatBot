@@ -148,17 +148,21 @@ async def receive_webhook(request: Request):
             print(f"[POST /webhook] {phone}: interactive event - {selected_id} - 200 OK")
             return {"status": "ok"}
 
+        text_lower = text.strip().lower()
+        if text_lower in ("hola", "buenas", "menu", "opciones", "seleccion simple", "selección simple", "menú"):
+            try:
+                await send_interactive_list(phone)
+                print(f"[POST /webhook] {phone}: menú interactivo enviado - 200 OK")
+            except Exception as e:
+                print(f"[POST /webhook] {phone}: Error al enviar menú interactivo: {e}")
+            return {"status": "ok"}
+
         add_message(phone, "user", text)
 
         if text.strip().lower() == "reiniciar":
             clear_session(phone)
             await send_whatsapp_message(phone, "¡Hola! Soy el asistente del Hotel Paraíso. En qué puedo ayudarte?")
             print(f"[POST /webhook] {phone}: reiniciado - 200 OK")
-            return {"status": "ok"}
-
-        if text.strip().lower() in ("hola", "menu", "opciones", "seleccion simple", "selección simple", "menú"):
-            await send_interactive_list(phone)
-            print(f"[POST /webhook] {phone}: menú interactivo - 200 OK")
             return {"status": "ok"}
 
         result = chat_with_tools_and_session(text, phone, tools=TOOLS)
