@@ -111,6 +111,49 @@ def health():
     return {"status": "ok"}
 
 
+MENSAJE_CONTINGENCIA = (
+    "⚠️ Ocurrió un problema inesperado. "
+    "No te preocupes, puedes intentar de nuevo.\n\n"
+    "Selecciona cualquier opción del menú para continuar:\n"
+    "• Consultar mi reserva\n"
+    "• Registrar hora de llegada\n"
+    "• Información de servicios\n"
+    "• Cancelar reserva\n"
+    "• Hablar con recepción"
+)
+
+
+def _validar_telefono(telefono: str) -> bool:
+    """Valida que el teléfono tenga un formato mínimo aceptable."""
+    if not telefono or not isinstance(telefono, str):
+        return False
+    digitos = ''.join(c for c in telefono if c.isdigit())
+    return len(digitos) >= 7
+
+
+def _validar_id_entero(valor: str, nombre_campo: str = "ID") -> int | None:
+    """Convierte y valida que un valor sea un entero positivo. Retorna None si es inválido."""
+    try:
+        resultado = int(str(valor).strip())
+        if resultado > 0:
+            return resultado
+    except (ValueError, AttributeError):
+        pass
+    return None
+
+
+def _validar_texto_entrada(texto: str, max_longitud: int = 200) -> str | None:
+    """Valida que la entrada de texto no sea vacía ni exceda la longitud máxima."""
+    if not texto or not isinstance(texto, str):
+        return None
+    texto = texto.strip()
+    if not texto:
+        return None
+    if len(texto) > max_longitud:
+        return None
+    return texto
+
+
 @app.get("/webhook")
 def verify_webhook(
     hub_mode: str = Query(None, alias="hub.mode"),
@@ -144,7 +187,16 @@ async def receive_webhook(request: Request):
         selected_id = msg.get("selected_id")
 
         if message_type == "interactive" and selected_id:
-            await _handle_interactive(phone, selected_id)
+            try:
+                await _handle_interactive(phone, selected_id)
+            except Exception as e:
+                print(f"[POST /webhook] {phone}: Error en _handle_interactive: {e}", flush=True)
+                import traceback
+                traceback.print_exc()
+                try:
+                    await send_whatsapp_message(phone, MENSAJE_CONTINGENCIA)
+                except Exception:
+                    pass
             print(f"[POST /webhook] {phone}: interactive event - {selected_id} - 200 OK")
             return {"status": "ok"}
 
@@ -154,7 +206,14 @@ async def receive_webhook(request: Request):
                 await send_interactive_list(phone)
                 print(f"[POST /webhook] {phone}: menú interactivo enviado - 200 OK")
             except Exception as e:
-                print(f"[POST /webhook] {phone}: Error al enviar menú interactivo: {e}")
+                print(f"[POST /webhook] {phone}: Error al enviar menú interactivo: {e}", flush=True)
+            return {"status": "ok"}
+
+        if not _validar_texto_entrada(text):
+            await send_whatsapp_message(
+                phone,
+                "No pude leer tu mensaje. Por favor, envía tu consulta de nuevo o selecciona una opción del menú.",
+            )
             return {"status": "ok"}
 
         add_message(phone, "user", text)
@@ -174,14 +233,27 @@ async def receive_webhook(request: Request):
             for tc in tool_calls:
                 tool_name = tc["name"]
                 tool_args = tc["args"]
-                tool_result = execute_tool(tool_name, tool_args)
+                try:
+                    tool_result = execute_tool(tool_name, tool_args)
+                except Exception as e:
+                    print(f"[POST /webhook] {phone}: Error ejecutando {tool_name}: {e}", flush=True)
+                    tool_result = f"No fue posible procesar '{tool_name}'. Intenta de nuevo."
                 add_message(phone, "tool", f"{tool_name}: {tool_result}")
 
-                gemini_result = chat_with_tools_and_session(
-                    f"El resultado de la herramienta {tool_name} es: {tool_result}. Responde al huésped de forma natural.",
-                    phone, tools=TOOLS,
-                )
-                response_text = gemini_result.get("text", tool_result)
+                if isinstance(tool_result, str) and tool_result.startswith("Error"):
+                    response_text = tool_result
+                    break
+
+                try:
+                    gemini_result = chat_with_tools_and_session(
+                        f"El resultado de la herramienta {tool_name} es: {tool_result}. Responde al huésped de forma natural.",
+                        phone, tools=TOOLS,
+                    )
+                    response_text = gemini_result.get("text", tool_result)
+                except Exception as e:
+                    print(f"[POST /webhook] {phone}: Error en Gemini tras tool {tool_name}: {e}", flush=True)
+                    response_text = "Ocurrió un problema al procesar tu solicitud. Intenta de nuevo o selecciona una opción del menú."
+                    break
 
         add_message(phone, "model", response_text)
         await send_whatsapp_message(phone, response_text)
@@ -190,9 +262,14 @@ async def receive_webhook(request: Request):
         print(f"[WEBHOOK] Response: {response_text[:100]}")
 
     except Exception as e:
-        print(f"Error procesando mensaje: {e}", flush=True)
+        print(f"[POST /webhook] Error crítico procesando mensaje: {e}", flush=True)
         import traceback
         traceback.print_exc()
+        try:
+            phone = msg["from"] if msg else "desconocido"
+            await send_whatsapp_message(phone, MENSAJE_CONTINGENCIA)
+        except Exception:
+            print(f"[POST /webhook] No fue posible enviar mensaje de contingencia.", flush=True)
 
     print(f"[POST /webhook] Procesado - 200 OK")
     return {"status": "ok"}
@@ -210,69 +287,78 @@ async def _send_welcome_buttons(phone: str):
 
 async def _handle_interactive(phone: str, selected_id: str):
     """Maneja los eventos interactivos (botones presionados o listas seleccionadas)."""
-    if selected_id == "btn_habitaciones":
-        sections = [
-            {
-                "title": "Tipos de Habitación",
-                "rows": [
-                    {"id": "habitacion_sencilla", "title": "Habitación Sencilla", "description": "Habitación individual con cama queen size"},
-                    {"id": "habitacion_doble", "title": "Habitación Doble", "description": "Habitación doble con camas twin o cama king"},
-                    {"id": "habitacion_suite", "title": "Suite", "description": "Suite premium con sala de estar y vista al mar"},
-                ],
-            },
-        ]
-        await send_interactive_list_custom(
-            phone,
-            "Selecciona el tipo de habitación que deseas:",
-            "Ver Habitaciones",
-            sections,
-        )
-    elif selected_id == "btn_servicios":
-        await send_whatsapp_message(
-            phone,
-            "Nuestros servicios incluyen: recepción 24h, limpieza diaria, restaurante, piscina, spa y estacionamiento. ¡Contáctanos para más detalles!",
-        )
-    elif selected_id == "btn_contacto":
-        await send_whatsapp_message(
-            phone,
-            "Puedes contactarnos al teléfono +52 123 456 7890 o por email a recepcion@hotelparaiso.com",
-        )
-    elif selected_id == "opt_reserva":
-        await send_whatsapp_message(
-            phone,
-            "Para consultar tu reserva, por favor proporciona tu número de reserva o teléfono asociado.",
-        )
-    elif selected_id == "opt_checkin":
-        await send_whatsapp_message(
-            phone,
-            "Para registrar tu hora de llegada, indícanos tu número de reserva y la hora estimada de llegada.",
-        )
-    elif selected_id == "opt_servicios":
-        await send_whatsapp_message(
-            phone,
-            "Nuestros servicios incluyen: WiFi gratuito, desayuno incluido, parking seguro, y horarios de piscina y spa. ¡Contáctanos para más detalles!",
-        )
-    elif selected_id == "opt_cancelar":
-        await send_whatsapp_message(
-            phone,
-            "Para calcular la penalización por cancelación, por favor proporciona tu número de reserva.",
-        )
-    elif selected_id == "opt_recepcion":
-        await send_whatsapp_message(
-            phone,
-            "Serás conectado con recepción para atención personalizada. Por favor espera un momento.",
-        )
-    elif selected_id.startswith("habitacion_"):
-        habitacion_tipo = selected_id.replace("habitacion_", "").capitalize()
-        await send_whatsapp_message(
-            phone,
-            f"Hemso recibido interés en la habitación {habitacion_tipo}. Un asesor se pondrá en contacto contigo brevemente.",
-        )
-    else:
-        await send_whatsapp_message(
-            phone,
-            f"Opción seleccionada: {selected_id}. Gracias por tu interés.",
-        )
+    try:
+        if selected_id == "btn_habitaciones":
+            sections = [
+                {
+                    "title": "Tipos de Habitación",
+                    "rows": [
+                        {"id": "habitacion_sencilla", "title": "Habitación Sencilla", "description": "Habitación individual con cama queen size"},
+                        {"id": "habitacion_doble", "title": "Habitación Doble", "description": "Habitación doble con camas twin o cama king"},
+                        {"id": "habitacion_suite", "title": "Suite", "description": "Suite premium con sala de estar y vista al mar"},
+                    ],
+                },
+            ]
+            await send_interactive_list_custom(
+                phone,
+                "Selecciona el tipo de habitación que deseas:",
+                "Ver Habitaciones",
+                sections,
+            )
+        elif selected_id == "btn_servicios":
+            await send_whatsapp_message(
+                phone,
+                "Nuestros servicios incluyen: recepción 24h, limpieza diaria, restaurante, piscina, spa y estacionamiento. ¡Contáctanos para más detalles!",
+            )
+        elif selected_id == "btn_contacto":
+            await send_whatsapp_message(
+                phone,
+                "Puedes contactarnos al teléfono +52 123 456 7890 o por email a recepcion@hotelparaiso.com",
+            )
+        elif selected_id == "opt_reserva":
+            await send_whatsapp_message(
+                phone,
+                "Para consultar tu reserva, por favor proporciona tu número de reserva o teléfono asociado.",
+            )
+        elif selected_id == "opt_checkin":
+            await send_whatsapp_message(
+                phone,
+                "Para registrar tu hora de llegada, indícanos tu número de reserva y la hora estimada de llegada.",
+            )
+        elif selected_id == "opt_servicios":
+            await send_whatsapp_message(
+                phone,
+                "Nuestros servicios incluyen: WiFi gratuito, desayuno incluido, parking seguro, y horarios de piscina y spa. ¡Contáctanos para más detalles!",
+            )
+        elif selected_id == "opt_cancelar":
+            await send_whatsapp_message(
+                phone,
+                "Para calcular la penalización por cancelación, por favor proporciona tu número de reserva.",
+            )
+        elif selected_id == "opt_recepcion":
+            await send_whatsapp_message(
+                phone,
+                "Serás conectado con recepción para atención personalizada. Por favor espera un momento.",
+            )
+        elif selected_id.startswith("habitacion_"):
+            habitacion_tipo = selected_id.replace("habitacion_", "").capitalize()
+            await send_whatsapp_message(
+                phone,
+                f"Hemso recibido interés en la habitación {habitacion_tipo}. Un asesor se pondrá en contacto contigo brevemente.",
+            )
+        else:
+            await send_whatsapp_message(
+                phone,
+                f"Opción seleccionada: {selected_id}. Gracias por tu interés.",
+            )
+    except Exception as e:
+        print(f"[POST /webhook] {phone}: Error en _handle_interactive: {e}", flush=True)
+        import traceback
+        traceback.print_exc()
+        try:
+            await send_whatsapp_message(phone, MENSAJE_CONTINGENCIA)
+        except Exception:
+            pass
 
 
 def extract_message(body: dict) -> dict | None:

@@ -12,6 +12,11 @@ POLITICAS = {
     "no_reembolsable": {"dias_min": 999, "porcentaje": 100},
 }
 
+MENSAJE_ERROR_DB = (
+    "Hubo un problema al consultar nuestros registros. "
+    "Intenta de nuevo o selecciona 'Hablar con recepción' del menú."
+)
+
 
 def _get_db():
     conn = sqlite3.connect(str(DB_PATH))
@@ -20,20 +25,25 @@ def _get_db():
 
 
 def buscar_reserva(telefono: str) -> str:
-    conn = _get_db()
-    cursor = conn.cursor()
-    cursor.execute(
-        """SELECT r.id, r.check_in, r.check_out, r.politica, r.importe_total, r.estado,
-                  h.nombre, hab.numero as habitacion_numero
-           FROM reservas r
-           JOIN huespedes h ON r.huesped_id = h.id
-           JOIN habitaciones hab ON r.habitacion_id = hab.id
-           WHERE h.telefono = ? AND r.estado != 'cancelada'
-           ORDER BY r.check_in DESC LIMIT 1""",
-        (telefono,),
-    )
-    row = cursor.fetchone()
-    conn.close()
+    try:
+        conn = _get_db()
+        cursor = conn.cursor()
+        cursor.execute(
+            """SELECT r.id, r.check_in, r.check_out, r.politica, r.importe_total, r.estado,
+                      h.nombre, hab.numero as habitacion_numero
+               FROM reservas r
+               JOIN huespedes h ON r.huesped_id = h.id
+               JOIN habitaciones hab ON r.habitacion_id = hab.id
+               WHERE h.telefono = ? AND r.estado != 'cancelada'
+               ORDER BY r.check_in DESC LIMIT 1""",
+            (telefono,),
+        )
+        row = cursor.fetchone()
+        conn.close()
+    except sqlite3.Error:
+        return MENSAJE_ERROR_DB
+    except Exception:
+        return MENSAJE_ERROR_DB
 
     if not row:
         return f"No se encontró una reserva activa para el teléfono {telefono}."
@@ -51,11 +61,16 @@ def buscar_reserva(telefono: str) -> str:
 
 
 def calcular_penalizacion(reserva_id: int) -> str:
-    conn = _get_db()
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM reservas WHERE id = ?", (reserva_id,))
-    row = cursor.fetchone()
-    conn.close()
+    try:
+        conn = _get_db()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM reservas WHERE id = ?", (reserva_id,))
+        row = cursor.fetchone()
+        conn.close()
+    except sqlite3.Error:
+        return MENSAJE_ERROR_DB
+    except Exception:
+        return MENSAJE_ERROR_DB
 
     if not row:
         return f"No se encontró la reserva con ID {reserva_id}."
@@ -84,74 +99,94 @@ def calcular_penalizacion(reserva_id: int) -> str:
 
 
 def confirmar_cancelacion(reserva_id: int) -> str:
-    conn = _get_db()
-    cursor = conn.cursor()
-    cursor.execute("SELECT estado FROM reservas WHERE id = ?", (reserva_id,))
-    row = cursor.fetchone()
+    try:
+        conn = _get_db()
+        cursor = conn.cursor()
+        cursor.execute("SELECT estado FROM reservas WHERE id = ?", (reserva_id,))
+        row = cursor.fetchone()
 
-    if not row:
+        if not row:
+            conn.close()
+            return f"No se encontró la reserva con ID {reserva_id}."
+
+        if row["estado"] == "cancelada":
+            conn.close()
+            return f"La reserva {reserva_id} ya está cancelada."
+
+        cursor.execute("UPDATE reservas SET estado = 'cancelada' WHERE id = ?", (reserva_id,))
+        conn.commit()
         conn.close()
-        return f"No se encontró la reserva con ID {reserva_id}."
-
-    if row["estado"] == "cancelada":
-        conn.close()
-        return f"La reserva {reserva_id} ya está cancelada."
-
-    cursor.execute("UPDATE reservas SET estado = 'cancelada' WHERE id = ?", (reserva_id,))
-    conn.commit()
-    conn.close()
-    return f"✅ Reserva {reserva_id} cancelada correctamente."
+        return f"✅ Reserva {reserva_id} cancelada correctamente."
+    except sqlite3.Error:
+        return MENSAJE_ERROR_DB
+    except Exception:
+        return MENSAJE_ERROR_DB
 
 
 def registrar_llegada(reserva_id: int, hora_llegada: str) -> str:
-    conn = _get_db()
-    cursor = conn.cursor()
-    cursor.execute(
-        "SELECT r.*, h.nombre FROM reservas r JOIN huespedes h ON r.huesped_id = h.id WHERE r.id = ?",
-        (reserva_id,),
-    )
-    row = cursor.fetchone()
+    try:
+        conn = _get_db()
+        cursor = conn.cursor()
+        cursor.execute(
+            "SELECT r.*, h.nombre FROM reservas r JOIN huespedes h ON r.huesped_id = h.id WHERE r.id = ?",
+            (reserva_id,),
+        )
+        row = cursor.fetchone()
 
-    if not row:
+        if not row:
+            conn.close()
+            return f"No se encontró la reserva con ID {reserva_id}."
+
+        cursor.execute(
+            "INSERT INTO llegadas (reserva_id, hora_llegada) VALUES (?, ?)",
+            (reserva_id, hora_llegada),
+        )
+        cursor.execute("UPDATE reservas SET hora_llegada = ? WHERE id = ?", (hora_llegada, reserva_id))
+        conn.commit()
         conn.close()
-        return f"No se encontró la reserva con ID {reserva_id}."
-
-    cursor.execute(
-        "INSERT INTO llegadas (reserva_id, hora_llegada) VALUES (?, ?)",
-        (reserva_id, hora_llegada),
-    )
-    cursor.execute("UPDATE reservas SET hora_llegada = ? WHERE id = ?", (hora_llegada, reserva_id))
-    conn.commit()
-    conn.close()
-    return (
-        f"✅ Hora de llegada registrada para la reserva {reserva_id}.\n"
-        f"- Hora estimada: {hora_llegada}\n"
-        f"- Huésped: {row['nombre']}\n"
-        f"- Habitación: {row['habitacion_id']}"
-    )
+        return (
+            f"✅ Hora de llegada registrada para la reserva {reserva_id}.\n"
+            f"- Hora estimada: {hora_llegada}\n"
+            f"- Huésped: {row['nombre']}\n"
+            f"- Habitación: {row['habitacion_id']}"
+        )
+    except sqlite3.Error:
+        return MENSAJE_ERROR_DB
+    except Exception:
+        return MENSAJE_ERROR_DB
 
 
 def escalar_recepcion(telefono: str, mensaje: str) -> str:
-    conn = sqlite3.connect(str(DB_PATH))
-    cursor = conn.cursor()
-    cursor.execute(
-        "INSERT INTO escalaciones (telefono, mensaje) VALUES (?, ?)",
-        (telefono, mensaje),
-    )
-    conn.commit()
-    conn.close()
-    return (
-        "Un agente de recepción le contactará en breve.\n"
-        "Su mensaje ha sido registrado y será atendido lo antes posible."
-    )
+    try:
+        conn = sqlite3.connect(str(DB_PATH))
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT INTO escalaciones (telefono, mensaje) VALUES (?, ?)",
+            (telefono, mensaje),
+        )
+        conn.commit()
+        conn.close()
+        return (
+            "Un agente de recepción le contactará en breve.\n"
+            "Su mensaje ha sido registrado y será atendido lo antes posible."
+        )
+    except sqlite3.Error:
+        return "No fue posible registrar tu solicitud. Inténtalo de nuevo o contacta a recepción directamente."
+    except Exception:
+        return "Hubo un problema al escalar tu solicitud. Por favor, intenta de nuevo."
 
 
 def get_reserva_by_id(reserva_id: int) -> dict | None:
-    conn = _get_db()
-    cursor = conn.cursor()
-    cursor.execute("SELECT * FROM reservas WHERE id = ?", (reserva_id,))
-    row = cursor.fetchone()
-    conn.close()
-    if row:
-        return dict(row)
-    return None
+    try:
+        conn = _get_db()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM reservas WHERE id = ?", (reserva_id,))
+        row = cursor.fetchone()
+        conn.close()
+        if row:
+            return dict(row)
+        return None
+    except sqlite3.Error:
+        return None
+    except Exception:
+        return None
