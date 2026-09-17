@@ -154,6 +154,14 @@ def _validar_texto_entrada(texto: str, max_longitud: int = 200) -> str | None:
     return texto
 
 
+def _es_resultado_no_encontrado(texto: str) -> bool:
+    """Detecta si el resultado de una consulta indica que no se encontraron registros."""
+    if not isinstance(texto, str):
+        return False
+    texto_lower = texto.lower()
+    return any(kw in texto_lower for kw in ["no se encontró", "no se pudo", "no fue posible"])
+
+
 @app.get("/webhook")
 def verify_webhook(
     hub_mode: str = Query(None, alias="hub.mode"),
@@ -200,15 +208,6 @@ async def receive_webhook(request: Request):
             print(f"[POST /webhook] {phone}: interactive event - {selected_id} - 200 OK")
             return {"status": "ok"}
 
-        text_lower = text.strip().lower()
-        if text_lower in ("hola", "buenas", "menu", "opciones", "seleccion simple", "selección simple", "menú"):
-            try:
-                await send_interactive_list(phone)
-                print(f"[POST /webhook] {phone}: menú interactivo enviado - 200 OK")
-            except Exception as e:
-                print(f"[POST /webhook] {phone}: Error al enviar menú interactivo: {e}", flush=True)
-            return {"status": "ok"}
-
         if not _validar_texto_entrada(text):
             await send_whatsapp_message(
                 phone,
@@ -216,13 +215,19 @@ async def receive_webhook(request: Request):
             )
             return {"status": "ok"}
 
-        add_message(phone, "user", text)
-
-        if text.strip().lower() == "reiniciar":
+        text_lower = text.strip().lower()
+        ESCAPE_KEYWORDS = {"cancelar", "salir", "reiniciar", "menu", "inicio"}
+        if text_lower in ESCAPE_KEYWORDS:
             clear_session(phone)
-            await send_whatsapp_message(phone, "¡Hola! Soy el asistente del Hotel Paraíso. En qué puedo ayudarte?")
-            print(f"[POST /webhook] {phone}: reiniciado - 200 OK")
+            print(f"[POST /webhook] {phone}: sesión reseteada por comando '{text_lower}'")
+            try:
+                await send_interactive_list(phone)
+                print(f"[POST /webhook] {phone}: menú interactivo enviado tras reset - 200 OK")
+            except Exception as e:
+                print(f"[POST /webhook] {phone}: Error al enviar menú tras reset: {e}", flush=True)
             return {"status": "ok"}
+
+        add_message(phone, "user", text)
 
         result = chat_with_tools_and_session(text, phone, tools=TOOLS)
 
@@ -240,8 +245,16 @@ async def receive_webhook(request: Request):
                     tool_result = f"No fue posible procesar '{tool_name}'. Intenta de nuevo."
                 add_message(phone, "tool", f"{tool_name}: {tool_result}")
 
+                if isinstance(tool_result, str) and _es_resultado_no_encontrado(tool_result):
+                    clear_session(phone)
+                    print(f"[POST /webhook] {phone}: sesión reseteada por búsqueda sin resultados")
+                    response_text = tool_result + "\n\nPuedes seleccionar cualquier opción del menú para reiniciar."
+                    break
+
                 if isinstance(tool_result, str) and tool_result.startswith("Error"):
-                    response_text = tool_result
+                    clear_session(phone)
+                    print(f"[POST /webhook] {phone}: sesión reseteada por error en herramienta")
+                    response_text = tool_result + "\n\nPuedes seleccionar cualquier opción del menú para reiniciar."
                     break
 
                 try:
