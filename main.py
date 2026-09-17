@@ -6,6 +6,7 @@ from services.whatsapp_service import (
     send_whatsapp_message,
     send_interactive_buttons,
     send_interactive_list,
+    send_interactive_list_custom,
     format_whatsapp_message,
 )
 from services.session import add_message, get_history, clear_session
@@ -155,9 +156,9 @@ async def receive_webhook(request: Request):
             print(f"[POST /webhook] {phone}: reiniciado - 200 OK")
             return {"status": "ok"}
 
-        if text.strip().lower() in ("hola", "menu"):
-            await _send_welcome_buttons(phone)
-            print(f"[POST /webhook] {phone}: bienvenida con botones - 200 OK")
+        if text.strip().lower() in ("hola", "menu", "opciones", "seleccion simple", "selección simple", "menú"):
+            await send_interactive_list(phone)
+            print(f"[POST /webhook] {phone}: menú interactivo - 200 OK")
             return {"status": "ok"}
 
         result = chat_with_tools_and_session(text, phone, tools=TOOLS)
@@ -216,7 +217,7 @@ async def _handle_interactive(phone: str, selected_id: str):
                 ],
             },
         ]
-        await send_interactive_list(
+        await send_interactive_list_custom(
             phone,
             "Selecciona el tipo de habitación que deseas:",
             "Ver Habitaciones",
@@ -231,6 +232,31 @@ async def _handle_interactive(phone: str, selected_id: str):
         await send_whatsapp_message(
             phone,
             "Puedes contactarnos al teléfono +52 123 456 7890 o por email a recepcion@hotelparaiso.com",
+        )
+    elif selected_id == "opt_reserva":
+        await send_whatsapp_message(
+            phone,
+            "Para consultar tu reserva, por favor proporciona tu número de reserva o teléfono asociado.",
+        )
+    elif selected_id == "opt_checkin":
+        await send_whatsapp_message(
+            phone,
+            "Para registrar tu hora de llegada, indícanos tu número de reserva y la hora estimada de llegada.",
+        )
+    elif selected_id == "opt_servicios":
+        await send_whatsapp_message(
+            phone,
+            "Nuestros servicios incluyen: WiFi gratuito, desayuno incluido, parking seguro, y horarios de piscina y spa. ¡Contáctanos para más detalles!",
+        )
+    elif selected_id == "opt_cancelar":
+        await send_whatsapp_message(
+            phone,
+            "Para calcular la penalización por cancelación, por favor proporciona tu número de reserva.",
+        )
+    elif selected_id == "opt_recepcion":
+        await send_whatsapp_message(
+            phone,
+            "Serás conectado con recepción para atención personalizada. Por favor espera un momento.",
         )
     elif selected_id.startswith("habitacion_"):
         habitacion_tipo = selected_id.replace("habitacion_", "").capitalize()
