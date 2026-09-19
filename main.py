@@ -25,6 +25,7 @@ from tools.servicios import consultar_servicios
 from tools.consulta_reserva import consultar_reserva
 from tools.registro_llegada_db import registrar_llegada_db
 from tools.cancelacion_db import cancelar_reserva_db
+from tools.nueva_reserva import consultar_disponibilidad, registrar_reserva, listar_tipos_habitaciones
 from google.genai.types import FunctionDeclaration
 
 app = FastAPI(title="Hotel WhatsApp Bot", version="0.2.0")
@@ -135,6 +136,31 @@ def _setup_tools():
             "type": "object",
             "properties": {"identificador": {"type": "string"}},
             "required": ["identificador"],
+        },
+    ))
+    register_tool("consultar_disponibilidad", consultar_disponibilidad, FunctionDeclaration(
+        name="consultar_disponibilidad",
+        description="Consulta la disponibilidad de habitaciones por tipo para un rango de fechas",
+        parameters={
+            "type": "object",
+            "properties": {"fecha_entrada": {"type": "string"}, "fecha_salida": {"type": "string"}},
+            "required": ["fecha_entrada", "fecha_salida"],
+        },
+    ))
+    register_tool("registrar_reserva", registrar_reserva, FunctionDeclaration(
+        name="registrar_reserva",
+        description="Registra una nueva reserva confirmada para un huésped",
+        parameters={
+            "type": "object",
+            "properties": {
+                "huesped_id": {"type": "integer"},
+                "habitacion_id": {"type": "integer"},
+                "check_in": {"type": "string"},
+                "check_out": {"type": "string"},
+                "politica": {"type": "string"},
+                "importe_total": {"type": "number"},
+            },
+            "required": ["huesped_id", "habitacion_id", "check_in", "check_out", "politica", "importe_total"],
         },
     ))
 
@@ -274,6 +300,8 @@ async def receive_webhook(request: Request):
                     resultado = registrar_llegada_db(text)
                 elif pending_action == "cancelar_reserva":
                     resultado = cancelar_reserva_db(text)
+                elif pending_action == "nueva_reserva":
+                    resultado = await _procesar_nueva_reserva(text, phone)
                 elif pending_action == "escalar_recepcion":
                     resultado = escalar_recepcion(phone, text)
                 else:
@@ -349,6 +377,50 @@ async def receive_webhook(request: Request):
     return {"status": "ok"}
 
 
+async def _procesar_nueva_reserva(texto: str, phone: str) -> str:
+    partes = texto.strip().split()
+    if len(partes) < 2:
+        return "📅 Para hacer una reserva, envíame tus fechas de entrada y salida en formato YYYY-MM-DD.\nEjemplo: 2026-09-25 2026-09-28"
+
+    try:
+        check_in = partes[0]
+        check_out = partes[1]
+        if len(partes) >= 3:
+            huesped_id = int(partes[2])
+        else:
+            huesped_id = 1
+    except (ValueError, IndexError):
+        return "Formato inválido. Envíame: fecha_entrada fecha_salida [huesped_id]"
+
+    from services.session import add_message, get_history, set_pending_action, clear_pending_action
+
+    resultado_disp = consultar_disponibilidad(check_in, check_out)
+    if resultado_disp.startswith("Lo sentimos"):
+        return resultado_disp
+    if "Formato inválido" in resultado_disp:
+        return resultado_disp
+
+    return resultado_disp + "\n\n📝 Para confirmar, envía: check_in check_out huesped_id habitacion_id politica importe_total"
+
+
+def _procesar_confirmacion_reserva(texto: str, phone: str) -> str:
+    partes = texto.strip().split()
+    if len(partes) < 6:
+        return "Datos insuficientes. Envía: check_in check_out huesped_id habitacion_id politica importe_total"
+
+    try:
+        check_in = partes[0]
+        check_out = partes[1]
+        huesped_id = int(partes[2])
+        habitacion_id = int(partes[3])
+        politica = partes[4]
+        importe_total = float(partes[5])
+    except (ValueError, IndexError):
+        return "Formato de confirmación inválido."
+
+    return registrar_reserva(huesped_id, habitacion_id, check_in, check_out, politica, importe_total)
+
+
 async def _send_welcome_buttons(phone: str):
     """Envía los botones de bienvenida al usuario."""
     buttons = [
@@ -386,6 +458,13 @@ async def _handle_interactive(phone: str, selected_id: str):
             await send_whatsapp_message(
                 phone,
                 "Puedes contactarnos al teléfono +52 123 456 7890 o por email a recepcion@hotelparaiso.com",
+            )
+        elif selected_id == "opt_nueva_reserva":
+            from services.session import set_pending_action
+            set_pending_action(phone, "nueva_reserva")
+            await send_whatsapp_message(
+                phone,
+                listar_tipos_habitaciones() + "\n\nIndícame tus fechas de entrada y salida.",
             )
         elif selected_id == "opt_consultar":
             from services.session import set_pending_action
