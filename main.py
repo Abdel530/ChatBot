@@ -318,6 +318,19 @@ async def receive_webhook(request: Request):
                     pass
             return {"status": "ok"}
 
+        estado_reserva = get_reservation_state(phone)
+        if estado_reserva != RESERVATION_STATE_IDLE:
+            try:
+                resultado = await _procesar_estado_reserva(text, phone)
+                await send_whatsapp_message(phone, resultado)
+            except Exception as e:
+                print(f"[POST /webhook] {phone}: Error en estado de reserva: {e}", flush=True)
+                try:
+                    await send_whatsapp_message(phone, "Hubo un problema. Intenta de nuevo o selecciona el menú.")
+                except Exception:
+                    pass
+            return {"status": "ok"}
+
         pending_action = get_pending_action(phone)
         if pending_action:
             clear_pending_action(phone)
@@ -340,19 +353,6 @@ async def receive_webhook(request: Request):
                 except Exception:
                     pass
             print(f"[POST /webhook] {phone}: acción pendiente '{pending_action}' completada - 200 OK")
-            return {"status": "ok"}
-
-        estado_reserva = get_reservation_state(phone)
-        if estado_reserva != RESERVATION_STATE_IDLE:
-            try:
-                resultado = await _procesar_estado_reserva(text, phone)
-                await send_whatsapp_message(phone, resultado)
-            except Exception as e:
-                print(f"[POST /webhook] {phone}: Error en estado de reserva: {e}", flush=True)
-                try:
-                    await send_whatsapp_message(phone, "Hubo un problema. Intenta de nuevo o selecciona el menú.")
-                except Exception:
-                    pass
             return {"status": "ok"}
 
         add_message(phone, "user", text)
@@ -418,6 +418,7 @@ async def receive_webhook(request: Request):
 
 async def _procesar_estado_reserva(texto: str, phone: str) -> str:
     estado = get_reservation_state(phone)
+    clear_pending_action(phone)
 
     if estado == RESERVATION_STATE_SELECT_HABITACION:
         return "🤷 No entendí la selección. Usa el menú para elegir un tipo de habitación."
@@ -564,6 +565,7 @@ async def _handle_interactive(phone: str, selected_id: str):
         elif selected_id == "opt_nueva_reserva":
             set_reservation_state(phone, RESERVATION_STATE_SELECT_HABITACION)
             clear_reservation_data(phone)
+            clear_pending_action(phone)
             await send_room_type_list(phone)
         elif selected_id in ("hab_sencilla", "hab_doble", "hab_triple", "hab_cuadruple", "hab_suite"):
             tipo_map = {"hab_sencilla": "Sencilla", "hab_doble": "Doble", "hab_triple": "Triple", "hab_cuadruple": "Cuádruple", "hab_suite": "Suite"}
