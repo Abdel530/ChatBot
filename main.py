@@ -36,7 +36,10 @@ from tools.registro_llegada_db import registrar_llegada_db
 from tools.cancelacion_db import cancelar_reserva_db
 import re
 
-from tools.nueva_reserva import consultar_disponibilidad, registrar_reserva, upsert_huesped, ddmmyyyy_to_yyyymmdd, validar_hora_12h
+from tools.nueva_reserva import (
+    consultar_disponibilidad, registrar_reserva, upsert_huesped,
+    ddmmyyyy_to_yyyymmdd, validar_hora_12h,
+)
 from google.genai.types import FunctionDeclaration
 
 app = FastAPI(title="Hotel WhatsApp Bot", version="0.2.0")
@@ -441,34 +444,33 @@ async def _procesar_estado_reserva(texto: str, phone: str) -> str:
         if paso == 0:
             set_reservation_data(phone, "nombre", texto)
             set_reservation_data(phone, "paso_personal", 1)
-            upsert_huesped(huesped_id, nombre=texto)
-            return "📋 Paso 2/6: Apellidos\nEnvíame tus apellidos."
+            return "📋 Paso 2/7: Apellidos\nEnvíame tus apellidos."
         elif paso == 1:
             set_reservation_data(phone, "apellidos", texto)
             set_reservation_data(phone, "paso_personal", 2)
-            upsert_huesped(huesped_id, apellidos=texto)
-            return "🌍 Paso 3/6: Nacionalidad\nEnvíame tu nacionalidad."
+            return "🆔 Paso 3/7: Cédula / Pasaporte\nEnvíame tu número de cédula o pasaporte."
         elif paso == 2:
-            set_reservation_data(phone, "nacionalidad", texto)
+            set_reservation_data(phone, "cedula", texto)
             set_reservation_data(phone, "paso_personal", 3)
-            upsert_huesped(huesped_id, nacionalidad=texto)
-            return "📧 Paso 4/6: Correo Electrónico\nEnvíame tu correo electrónico."
+            return "🌍 Paso 4/7: Nacionalidad\nEnvíame tu nacionalidad."
         elif paso == 3:
-            set_reservation_data(phone, "email", texto)
+            set_reservation_data(phone, "nacionalidad", texto)
             set_reservation_data(phone, "paso_personal", 4)
-            upsert_huesped(huesped_id, email=texto)
-            return "📱 Paso 5/6: Número Telefónico de Contacto\nEnvíame tu número de teléfono."
+            return "📧 Paso 5/7: Correo Electrónico\nEnvíame tu correo electrónico."
         elif paso == 4:
-            set_reservation_data(phone, "telefono", texto)
+            set_reservation_data(phone, "email", texto)
             set_reservation_data(phone, "paso_personal", 5)
-            upsert_huesped(huesped_id, telefono=texto)
+            return "📱 Paso 6/7: Número Telefónico de Contacto\nEnvíame tu número de teléfono."
+        elif paso == 5:
+            set_reservation_data(phone, "telefono", texto)
+            set_reservation_data(phone, "paso_personal", 6)
 
             set_reservation_state(phone, RESERVATION_STATE_HORA_LLEGADA)
             return (
                 "✅ Datos personales recibidos.\n\n"
-                "🕐 Paso 6/6: Hora Estimada de Llegada\n"
+                "🕐 Paso 7/7: Hora Estimada de Llegada\n"
                 "Envíame tu hora estimada de llegada en formato 12 horas.\n"
-                "Ejemplo: 02:30 PM o 10:00 AM"
+                "Ejemplo: 8:30 PM o 10:00 AM"
             )
         else:
             return "Paso no reconocido. Usa el menú para continuar."
@@ -490,9 +492,21 @@ async def _procesar_estado_reserva(texto: str, phone: str) -> str:
         check_in_yyyymmdd = ddmmyyyy_to_yyyymmdd(check_in)
         check_out_yyyymmdd = ddmmyyyy_to_yyyymmdd(check_out)
 
-        registrar_reserva(huesped_id, check_in_yyyymmdd, check_out_yyyymmdd, "flexible", importe_total, hora_llegada)
+        nombre = datos.get("nombre", "")
+        apellidos = datos.get("apellidos", "")
+        cedula = datos.get("cedula", "")
+        nacionalidad = datos.get("nacionalidad", "")
+        email = datos.get("email", "")
+        telefono = datos.get("telefono", "")
+
+        upsert_huesped(huesped_id, nombre=nombre, apellidos=apellidos,
+                        cedula=cedula, nacionalidad=nacionalidad,
+                        email=email, telefono=telefono)
+
+        resultado = registrar_reserva(huesped_id, tipo, check_in_yyyymmdd, check_out_yyyymmdd,
+                                        "flexible", importe_total, hora_llegada)
         clear_reservation(phone)
-        return "¡Muchas gracias por su registro! Su reserva ha sido procesada con éxito. ¡Esperamos tenerle pronto con nosotros!"
+        return resultado
 
     return "Estado de reserva no reconocido. Selecciona una opción del menú."
 

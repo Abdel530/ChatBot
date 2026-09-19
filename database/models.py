@@ -4,6 +4,7 @@ CREATE TABLE IF NOT EXISTS huespedes (
     telefono TEXT UNIQUE NOT NULL,
     nombre TEXT NOT NULL,
     apellidos TEXT,
+    cedula TEXT,
     nacionalidad TEXT,
     email TEXT
 );

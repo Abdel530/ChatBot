@@ -23,7 +23,7 @@ PRECIO_MAP = {
     "Suite": 600.0,
 }
 
-HORA_PATTERN = re.compile(r"^(0[1-9]|1[0-2]):([0-5][0-9])\s*(AM|PM|am|pm)$")
+HORA_PATTERN = re.compile(r"^(\d|[01]\d|2[0-3]):([0-5][0-9])\s*([AP]M|[ap]m)$")
 
 MENSAJE_ERROR_DB = (
     "Hubo un problema al consultar la disponibilidad. "
@@ -43,7 +43,7 @@ def validar_hora_12h(hora_str: str) -> str:
     match = HORA_PATTERN.match(hora_str.strip())
     if not match:
         raise ValueError(
-            f"Formato de hora inválido: '{hora_str}'. Usa formato 12h: 02:30 PM o 10:00 AM."
+            f"Formato de hora inválido: '{hora_str}'. Usa formato 12h: 8:30 PM, 02:30 PM o 10:00 AM."
         )
     return hora_str.strip()
 
@@ -95,12 +95,13 @@ def consultar_disponibilidad(fecha_entrada: str, fecha_salida: str) -> str:
             lineas.append(f"• 0 Habitaciones {tipo.lower()} (Agotado)")
 
     if not hay_disponibilidad or all(v == 0 for v in conteo.values()):
-        return "Lo sentimos, no tenemos disponibilidad para las fechas seleccionadas."
+        return "Lo sentimos, no hay habitaciones disponibles para esas fechas. Por favor intenta con otro rango de fechas."
     return "\n".join(lineas)
 
 
 def upsert_huesped(huesped_id: int, nombre: str = None, apellidos: str = None,
-                    nacionalidad: str = None, email: str = None, telefono: str = None) -> int:
+                    cedula: str = None, nacionalidad: str = None,
+                    email: str = None, telefono: str = None) -> int:
     try:
         conn = sqlite3.connect(str(DB_PATH))
         cursor = conn.cursor()
@@ -115,6 +116,9 @@ def upsert_huesped(huesped_id: int, nombre: str = None, apellidos: str = None,
             if apellidos is not None:
                 set_clauses.append("apellidos = ?")
                 params.append(apellidos)
+            if cedula is not None:
+                set_clauses.append("cedula = ?")
+                params.append(cedula)
             if nacionalidad is not None:
                 set_clauses.append("nacionalidad = ?")
                 params.append(nacionalidad)
@@ -132,8 +136,8 @@ def upsert_huesped(huesped_id: int, nombre: str = None, apellidos: str = None,
                 )
         else:
             cursor.execute(
-                "INSERT INTO huespedes (id, nombre, apellidos, nacionalidad, email, telefono) VALUES (?, ?, ?, ?, ?, ?)",
-                (huesped_id, nombre or f"Huésped_{huesped_id}", apellidos or "", nacionalidad or "", email or "", telefono or ""),
+                "INSERT INTO huespedes (id, nombre, apellidos, cedula, nacionalidad, email, telefono) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (huesped_id, nombre or f"Huésped_{huesped_id}", apellidos or "", cedula or "", nacionalidad or "", email or "", telefono or ""),
             )
         conn.commit()
         conn.close()
@@ -144,14 +148,38 @@ def upsert_huesped(huesped_id: int, nombre: str = None, apellidos: str = None,
         return None
 
 
-def registrar_reserva(huesped_id: int, check_in: str, check_out: str,
-                       politica: str, importe_total: float, hora_llegada: str = None) -> str:
+def obtener_habitacion_disponible(tipo_habitacion: str, check_in: str, check_out: str) -> int | None:
     try:
         conn = sqlite3.connect(str(DB_PATH))
         cursor = conn.cursor()
         cursor.execute(
-            "INSERT INTO reservas (huesped_id, habitacion_id, check_in, check_out, politica, estado, importe_total, hora_llegada) VALUES (?, 0, ?, ?, ?, 'confirmada', ?, ?)",
-            (huesped_id, check_in, check_out, importe_total, hora_llegada or ""),
+            "SELECT id FROM habitaciones WHERE tipo = ? AND estado_limpieza IN ('limpia', 'en_proceso') AND id NOT IN "
+            "(SELECT habitacion_id FROM reservas WHERE estado = 'confirmada' AND check_out > ? AND check_in < ?) LIMIT 1",
+            (tipo_habitacion, check_in, check_out),
+        )
+        row = cursor.fetchone()
+        conn.close()
+        if row:
+            return row["id"]
+        return None
+    except sqlite3.Error:
+        return None
+    except Exception:
+        return None
+
+
+def registrar_reserva(huesped_id: int, tipo_habitacion: str, check_in: str, check_out: str,
+                         politica: str, importe_total: float, hora_llegada: str = None) -> str:
+    try:
+        habitacion_id = obtener_habitacion_disponible(tipo_habitacion, check_in, check_out)
+        if not habitacion_id:
+            return "Lo sentimos, no hay habitaciones disponibles para ese tipo en esas fechas."
+
+        conn = sqlite3.connect(str(DB_PATH))
+        cursor = conn.cursor()
+        cursor.execute(
+            "INSERT INTO reservas (huesped_id, habitacion_id, check_in, check_out, politica, estado, importe_total, hora_llegada) VALUES (?, ?, ?, ?, ?, 'CONFIRMADA', ?, ?)",
+            (huesped_id, habitacion_id, check_in, check_out, importe_total, hora_llegada or ""),
         )
         conn.commit()
         reserva_id = cursor.lastrowid
@@ -172,9 +200,11 @@ def registrar_reserva(huesped_id: int, check_in: str, check_out: str,
         return (
             f"✅ ¡Reserva confirmada!\n"
             f"- ID de reserva: #{reserva_id}\n"
+            f"- Habitación: {habitacion_id} ({tipo_habitacion})\n"
             f"- Check-in: {check_in}\n"
             f"- Check-out: {check_out}\n"
-            f"- Estado: confirmada\n"
+            f"- Estado: CONFIRMADA\n"
+            f"- Hora de llegada: {hora_llegada or 'No especificada'}\n"
             f"- Recibirás un código de acceso en tu check-in."
         )
     except sqlite3.Error:

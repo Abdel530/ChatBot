@@ -9,7 +9,7 @@ RESERVATION_STATE_PERSONAL = "personal"
 RESERVATION_STATE_HORA_LLEGADA = "hora_llegada"
 RESERVATION_STATE_COMPLETE = "complete"
 
-PASO_PERSONAL_NAMES = ["nombre", "cedula", "nacionalidad", "email", "telefono"]
+PASO_PERSONAL_NAMES = ["nombre", "apellidos", "cedula", "nacionalidad", "email", "telefono"]
 
 
 def add_message(phone: str, role: str, text: str) -> None:

@@ -9,11 +9,11 @@ BASE_DIR = Path(__file__).parent.parent
 DB_PATH = BASE_DIR / "hotel.db"
 
 HUESPEDES_DATA = [
-    (1, "34600123456", "Juan", "Pérez", "Mexicana", "juan@email.com"),
-    (2, "34600999888", "Ana", "García", "Mexicana", "ana@email.com"),
-    (3, "34600777666", "Carlos", "López", "Mexicana", "carlos@email.com"),
-    (4, "34600555444", "María", "Martín", "Española", "maria@email.com"),
-    (5, "34600333222", "Pedro", "Sánchez", "Mexicana", "pedro@email.com"),
+    (1, "34600123456", "Juan", "Pérez", "12345678A", "Mexicana", "juan@email.com"),
+    (2, "34600999888", "Ana", "García", "87654321B", "Mexicana", "ana@email.com"),
+    (3, "34600777666", "Carlos", "López", "11223344C", "Mexicana", "carlos@email.com"),
+    (4, "34600555444", "María", "Martín", "99887766D", "Española", "maria@email.com"),
+    (5, "34600333222", "Pedro", "Sánchez", "55667788E", "Mexicana", "pedro@email.com"),
 ]
 
 HABITACIONES_DATA = [
@@ -61,7 +61,7 @@ def seed():
     cursor.executescript(SQL_TABLES)
 
     cursor.executemany(
-        "INSERT OR IGNORE INTO huespedes (id, telefono, nombre, apellidos, nacionalidad, email) VALUES (?, ?, ?, ?, ?, ?)",
+        "INSERT OR IGNORE INTO huespedes (id, telefono, nombre, apellidos, cedula, nacionalidad, email) VALUES (?, ?, ?, ?, ?, ?, ?)",
         HUESPEDES_DATA,
     )
     cursor.executemany(
