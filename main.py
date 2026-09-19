@@ -21,6 +21,7 @@ from tools.reservas import (
 from tools.acceso import generar_codigo_acceso
 from tools.limpieza import consultar_limpieza
 from tools.costos import consultar_costo_habitacion
+from tools.servicios import consultar_servicios
 from google.genai.types import FunctionDeclaration
 
 app = FastAPI(title="Hotel WhatsApp Bot", version="0.2.0")
@@ -99,6 +100,15 @@ def _setup_tools():
             "type": "object",
             "properties": {"telefono": {"type": "string"}, "mensaje": {"type": "string"}},
             "required": ["telefono", "mensaje"],
+        },
+    ))
+    register_tool("consultar_servicios", consultar_servicios, FunctionDeclaration(
+        name="consultar_servicios",
+        description="Consulta la lista de servicios del hotel con horarios y descripciones",
+        parameters={
+            "type": "object",
+            "properties": {},
+            "required": [],
         },
     ))
 
@@ -319,10 +329,8 @@ async def _handle_interactive(phone: str, selected_id: str):
                 sections,
             )
         elif selected_id == "btn_servicios":
-            await send_whatsapp_message(
-                phone,
-                "Nuestros servicios incluyen: recepción 24h, limpieza diaria, restaurante, piscina, spa y estacionamiento. ¡Contáctanos para más detalles!",
-            )
+            resultado = consultar_servicios()
+            await send_whatsapp_message(phone, resultado)
         elif selected_id == "btn_contacto":
             await send_whatsapp_message(
                 phone,
@@ -339,10 +347,8 @@ async def _handle_interactive(phone: str, selected_id: str):
                 "Para registrar tu hora de llegada, indícanos tu número de reserva y la hora estimada de llegada.",
             )
         elif selected_id == "opt_servicios":
-            await send_whatsapp_message(
-                phone,
-                "Nuestros servicios incluyen: WiFi gratuito, desayuno incluido, parking seguro, y horarios de piscina y spa. ¡Contáctanos para más detalles!",
-            )
+            resultado = consultar_servicios()
+            await send_whatsapp_message(phone, resultado)
         elif selected_id == "opt_cancelar":
             await send_whatsapp_message(
                 phone,

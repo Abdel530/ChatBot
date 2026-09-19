@@ -43,4 +43,12 @@ CREATE TABLE IF NOT EXISTS escalaciones (
     creada_en TEXT DEFAULT (datetime('now','localtime')),
     atendida INTEGER DEFAULT 0
 );
+
+CREATE TABLE IF NOT EXISTS servicios (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    nombre TEXT NOT NULL,
+    descripcion TEXT NOT NULL,
+    horario TEXT NOT NULL,
+    ubicacion TEXT DEFAULT ''
+);
 """
