@@ -77,7 +77,7 @@ async def send_interactive_list(to_phone: str) -> dict | None:
                 "text": "Menú Principal"
             },
             "body": {
-                "text": "Selecciona la opción que deseas consultar:"
+                "text": "Selecciona la opción que deseas:"
             },
             "action": {
                 "button": "Ver opciones",
@@ -87,7 +87,7 @@ async def send_interactive_list(to_phone: str) -> dict | None:
                         "rows": [
                             {
                                 "id": "opt_nueva_reserva",
-                                "title": "Registrar reserva",
+                                "title": "Nueva reserva",
                                 "description": "Hacer una nueva reserva"
                             },
                             {
@@ -102,7 +102,7 @@ async def send_interactive_list(to_phone: str) -> dict | None:
                             },
                             {
                                 "id": "opt_servicios",
-                                "title": "Servicios del hotel",
+                                "title": "Servicios hotel",
                                 "description": "WiFi, desayuno y horarios"
                             },
                             {
@@ -127,9 +127,10 @@ async def send_interactive_list(to_phone: str) -> dict | None:
             response.raise_for_status()
             return response.json()
     except httpx.HTTPError as e:
-        print(f"[WHATSAPP API Error] send_interactive_list to {to_phone}: {e}")
         if hasattr(e, 'response') and e.response is not None:
-            print(f"[WHATSAPP API Error] Response body: {e.response.text}")
+            print(f"ERROR META API: {e.response.text}")
+        else:
+            print(f"ERROR META API: {e}")
         return None
 
 

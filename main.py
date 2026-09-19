@@ -292,7 +292,7 @@ async def receive_webhook(request: Request):
             return {"status": "ok"}
 
         text_lower = text.strip().lower()
-        ESCAPE_KEYWORDS = {"cancelar", "salir", "reiniciar", "menu", "inicio"}
+        ESCAPE_KEYWORDS = {"cancelar", "salir", "reiniciar", "menu", "menú", "inicio", "hola"}
         if text_lower in ESCAPE_KEYWORDS:
             clear_session(phone)
             clear_pending_action(phone)
@@ -301,7 +301,20 @@ async def receive_webhook(request: Request):
                 await send_interactive_list(phone)
                 print(f"[POST /webhook] {phone}: menú interactivo enviado tras reset - 200 OK")
             except Exception as e:
-                print(f"[POST /webhook] {phone}: Error al enviar menú tras reset: {e}", flush=True)
+                print(f"ERROR META API: {str(e)}", flush=True)
+                try:
+                    fallback = (
+                        "📋 **Menú Principal:**\n"
+                        "1. 🏨 Nueva reserva\n"
+                        "2. 🔍 Consultar reserva\n"
+                        "3. 📋 Registrar llegada\n"
+                        "4. 🛎️ Servicios\n"
+                        "5. ❌ Cancelar reserva\n"
+                        "6. 📞 Hablar con recepción"
+                    )
+                    await send_whatsapp_message(phone, fallback)
+                except Exception:
+                    pass
             return {"status": "ok"}
 
         pending_action = get_pending_action(phone)
@@ -588,6 +601,22 @@ async def _handle_interactive(phone: str, selected_id: str):
                 "🔔 Serás conectado con recepción para atención personalizada. "
                 "Envíame tu consulta y un agente se pondrá en contacto contigo.",
             )
+        elif selected_id == "opt_menu":
+            clear_session(phone)
+            clear_pending_action(phone)
+            try:
+                await send_interactive_list(phone)
+            except Exception:
+                fallback = (
+                    "📋 **Menú Principal:**\n"
+                    "1. 🏨 Nueva reserva\n"
+                    "2. 🔍 Consultar reserva\n"
+                    "3. 📋 Registrar llegada\n"
+                    "4. 🛎️ Servicios\n"
+                    "5. ❌ Cancelar reserva\n"
+                    "6. 📞 Hablar con recepción"
+                )
+                await send_whatsapp_message(phone, fallback)
         elif selected_id.startswith("habitacion_"):
             habitacion_tipo = selected_id.replace("habitacion_", "").capitalize()
             await send_whatsapp_message(
