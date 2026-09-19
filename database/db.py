@@ -1,9 +1,8 @@
-import sqlite3
-from pathlib import Path
-
-DB_PATH = Path(__file__).parent.parent / "hotel.db"
+from database.connection import get_db
 
 def get_connection():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
+    """
+    Retorna el cliente sincrónico de Turso (LibSQL).
+    Reemplaza la conexión local de SQLite.
+    """
+    return get_db()

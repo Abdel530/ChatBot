@@ -4,3 +4,4 @@ httpx
 python-dotenv
 google-genai
 pydantic-settings
+libsql-client

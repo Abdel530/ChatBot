@@ -12,7 +12,7 @@ from services.whatsapp_service import (
     send_room_type_list,
 )
 from services.session import (
-    add_message, get_history, clear_session, get_pending_action, clear_pending_action,
+    add_message, get_history, clear_session, get_pending_action, set_pending_action, clear_pending_action,
     set_reservation_state, get_reservation_state, set_reservation_data, get_reservation_data,
     clear_reservation, clear_reservation_data,
     RESERVATION_STATE_IDLE, RESERVATION_STATE_SELECT_HABITACION, RESERVATION_STATE_FECHAS,
@@ -34,7 +34,6 @@ from tools.servicios import consultar_servicios
 from tools.consulta_reserva import consultar_reserva
 from tools.registro_llegada_db import registrar_llegada_db
 from tools.cancelacion_db import cancelar_reserva_db
-import re
 
 from tools.nueva_reserva import (
     consultar_disponibilidad, registrar_reserva, upsert_huesped,
@@ -200,7 +199,6 @@ MENSAJE_CONTINGENCIA = (
 
 
 def _validar_telefono(telefono: str) -> bool:
-    """Valida que el teléfono tenga un formato mínimo aceptable."""
     if not telefono or not isinstance(telefono, str):
         return False
     digitos = ''.join(c for c in telefono if c.isdigit())
@@ -208,7 +206,6 @@ def _validar_telefono(telefono: str) -> bool:
 
 
 def _validar_id_entero(valor: str, nombre_campo: str = "ID") -> int | None:
-    """Convierte y valida que un valor sea un entero positivo. Retorna None si es inválido."""
     try:
         resultado = int(str(valor).strip())
         if resultado > 0:
@@ -219,19 +216,15 @@ def _validar_id_entero(valor: str, nombre_campo: str = "ID") -> int | None:
 
 
 def _validar_texto_entrada(texto: str, max_longitud: int = 200) -> str | None:
-    """Valida que la entrada de texto no sea vacía ni exceda la longitud máxima."""
     if not texto or not isinstance(texto, str):
         return None
     texto = texto.strip()
-    if not texto:
-        return None
-    if len(texto) > max_longitud:
+    if not texto or len(texto) > max_longitud:
         return None
     return texto
 
 
 def _es_resultado_no_encontrado(texto: str) -> bool:
-    """Detecta si el resultado de una consulta indica que no se encontraron registros."""
     if not isinstance(texto, str):
         return False
     texto_lower = texto.lower()
@@ -261,7 +254,6 @@ async def receive_webhook(request: Request):
 
     try:
         msg = extract_message(body)
-
         if not msg:
             return {"status": "ok"}
 
@@ -281,7 +273,6 @@ async def receive_webhook(request: Request):
                     await send_whatsapp_message(phone, MENSAJE_CONTINGENCIA)
                 except Exception:
                     pass
-            print(f"[POST /webhook] {phone}: interactive event - {selected_id} - 200 OK")
             return {"status": "ok"}
 
         if not _validar_texto_entrada(text):
@@ -292,6 +283,8 @@ async def receive_webhook(request: Request):
             return {"status": "ok"}
 
         text_lower = text.strip().lower()
+
+        # 1. COMANDOS EXPLICITOS DE ESCAPE / RESET
         ESCAPE_KEYWORDS = {"cancelar", "salir", "reiniciar", "menu", "menú", "inicio", "hola"}
         if text_lower in ESCAPE_KEYWORDS:
             clear_session(phone)
@@ -299,25 +292,22 @@ async def receive_webhook(request: Request):
             print(f"[POST /webhook] {phone}: sesión reseteada por comando '{text_lower}'")
             try:
                 await send_interactive_list(phone)
-                print(f"[POST /webhook] {phone}: menú interactivo enviado tras reset - 200 OK")
             except Exception as e:
                 print(f"ERROR META API: {str(e)}", flush=True)
-                try:
-                    fallback = (
-                        "¡Hola! Bienvenido/a al Hotel Paraíso. 🌴\n¿En qué puedo ayudarte hoy?\n"
-                        "📋 **Menú Principal:**\n"
-                        "1. 🏨 Nueva reserva\n"
-                        "2. 🔍 Consultar reserva\n"
-                        "3. 📋 Registrar llegada\n"
-                        "4. 🛎️ Servicios\n"
-                        "5. ❌ Cancelar reserva\n"
-                        "6. 📞 Hablar con recepción"
-                    )
-                    await send_whatsapp_message(phone, fallback)
-                except Exception:
-                    pass
+                fallback = (
+                    "¡Hola! Bienvenido/a al Hotel Paraíso. 🌴\n¿En qué puedo ayudarte hoy?\n"
+                    "📋 **Menú Principal:**\n"
+                    "1. 🏨 Nueva reserva\n"
+                    "2. 🔍 Consultar reserva\n"
+                    "3. 📋 Registrar llegada\n"
+                    "4. 🛎️ Servicios\n"
+                    "5. ❌ Cancelar reserva\n"
+                    "6. 📞 Hablar con recepción"
+                )
+                await send_whatsapp_message(phone, fallback)
             return {"status": "ok"}
 
+        # 2. PROCESAR ESTADO ACTIVO DE RESERVA (SI EXISTE)
         estado_reserva = get_reservation_state(phone)
         if estado_reserva != RESERVATION_STATE_IDLE:
             try:
@@ -326,11 +316,12 @@ async def receive_webhook(request: Request):
             except Exception as e:
                 print(f"[POST /webhook] {phone}: Error en estado de reserva: {e}", flush=True)
                 try:
-                    await send_whatsapp_message(phone, "Hubo un problema. Intenta de nuevo o selecciona el menú.")
+                    await send_whatsapp_message(phone, "Hubo un problema. Intenta de nuevo o escribe 'menu'.")
                 except Exception:
                     pass
             return {"status": "ok"}
 
+        # 3. PROCESAR ACCIONES PENDIENTES
         pending_action = get_pending_action(phone)
         if pending_action:
             clear_pending_action(phone)
@@ -348,15 +339,11 @@ async def receive_webhook(request: Request):
                 await send_whatsapp_message(phone, resultado)
             except Exception as e:
                 print(f"[POST /webhook] {phone}: Error en acción pendiente: {e}", flush=True)
-                try:
-                    await send_whatsapp_message(phone, "Hubo un problema al procesar tu solicitud. Intenta de nuevo.")
-                except Exception:
-                    pass
-            print(f"[POST /webhook] {phone}: acción pendiente '{pending_action}' completada - 200 OK")
+                await send_whatsapp_message(phone, "Hubo un problema al procesar tu solicitud. Intenta de nuevo.")
             return {"status": "ok"}
 
+        # 4. CHAT GENERAL CON LLM (GEMINI)
         add_message(phone, "user", text)
-
         result = chat_with_tools_and_session(text, phone, tools=TOOLS)
 
         response_text = result.get("text", "")
@@ -371,17 +358,16 @@ async def receive_webhook(request: Request):
                 except Exception as e:
                     print(f"[POST /webhook] {phone}: Error ejecutando {tool_name}: {e}", flush=True)
                     tool_result = f"No fue posible procesar '{tool_name}'. Intenta de nuevo."
+                
                 add_message(phone, "tool", f"{tool_name}: {tool_result}")
 
                 if isinstance(tool_result, str) and _es_resultado_no_encontrado(tool_result):
                     clear_session(phone)
-                    print(f"[POST /webhook] {phone}: sesión reseteada por búsqueda sin resultados")
                     response_text = tool_result + "\n\nPuedes seleccionar cualquier opción del menú para reiniciar."
                     break
 
                 if isinstance(tool_result, str) and tool_result.startswith("Error"):
                     clear_session(phone)
-                    print(f"[POST /webhook] {phone}: sesión reseteada por error en herramienta")
                     response_text = tool_result + "\n\nPuedes seleccionar cualquier opción del menú para reiniciar."
                     break
 
@@ -399,9 +385,6 @@ async def receive_webhook(request: Request):
         add_message(phone, "model", response_text)
         await send_whatsapp_message(phone, response_text)
 
-        print(f"[WEBHOOK] {phone}: {text}")
-        print(f"[WEBHOOK] Response: {response_text[:100]}")
-
     except Exception as e:
         print(f"[POST /webhook] Error crítico procesando mensaje: {e}", flush=True)
         import traceback
@@ -410,9 +393,8 @@ async def receive_webhook(request: Request):
             phone = msg["from"] if msg else "desconocido"
             await send_whatsapp_message(phone, MENSAJE_CONTINGENCIA)
         except Exception:
-            print(f"[POST /webhook] No fue posible enviar mensaje de contingencia.", flush=True)
+            pass
 
-    print(f"[POST /webhook] Procesado - 200 OK")
     return {"status": "ok"}
 
 
@@ -421,7 +403,7 @@ async def _procesar_estado_reserva(texto: str, phone: str) -> str:
     clear_pending_action(phone)
 
     if estado == RESERVATION_STATE_SELECT_HABITACION:
-        return "🤷 No entendí la selección. Usa el menú para elegir un tipo de habitación."
+        return "🤷 No entendí la selección. Usa el menú interactivo para elegir un tipo de habitación."
 
     if estado == RESERVATION_STATE_FECHAS:
         texto = texto.strip()
@@ -430,11 +412,8 @@ async def _procesar_estado_reserva(texto: str, phone: str) -> str:
         if len(fechas) < 2:
             return "📅 Indícame las fechas de entrada y salida en formato YYYY-MM-DD.\nEjemplo: 2026-09-25 -- 2026-09-28"
 
-        try:
-            check_in = fechas[0]
-            check_out = fechas[1]
-        except ValueError as e:
-            return str(e)
+        check_in = fechas[0]
+        check_out = fechas[1]
 
         resultado_disp = consultar_disponibilidad(check_in, check_out)
         if resultado_disp.startswith("Lo sentimos") or resultado_disp.startswith("Formato de fecha"):
@@ -443,16 +422,16 @@ async def _procesar_estado_reserva(texto: str, phone: str) -> str:
         set_reservation_data(phone, "check_in", check_in)
         set_reservation_data(phone, "check_out", check_out)
         set_reservation_state(phone, RESERVATION_STATE_PERSONAL)
+        set_reservation_data(phone, "paso_personal", 0)
 
-        tipo = get_reservation_data(phone, "tipo_habitacion")
-        return "¡Habitación disponible para esas fechas! Por favor, indícame tu Nombre."
+        return "¡Habitación disponible para esas fechas! Por favor, indícame tu Nombre (Paso 1/7)."
 
     if estado == RESERVATION_STATE_PERSONAL:
-        paso = get_reservation_data(phone, "paso_personal") or 0
-        datos = get_reservation_data(phone)
+        paso = get_reservation_data(phone, "paso_personal")
+        if paso is None:
+            paso = 0
+            
         texto = texto.strip()
-        huesped_id = datos.get("huesped_id", 1)
-
         if not texto:
             return "Por favor, envía la información solicitada."
 
@@ -480,7 +459,6 @@ async def _procesar_estado_reserva(texto: str, phone: str) -> str:
         elif paso == 5:
             set_reservation_data(phone, "telefono", texto)
             set_reservation_data(phone, "paso_personal", 6)
-
             set_reservation_state(phone, RESERVATION_STATE_HORA_LLEGADA)
             return (
                 "✅ Datos personales recibidos.\n\n"
@@ -505,9 +483,6 @@ async def _procesar_estado_reserva(texto: str, phone: str) -> str:
         except ValueError as e:
             return str(e)
 
-        check_in_yyyymmdd = check_in
-        check_out_yyyymmdd = check_out
-
         nombre = datos.get("nombre", "")
         apellidos = datos.get("apellidos", "")
         cedula = datos.get("cedula", "")
@@ -515,28 +490,19 @@ async def _procesar_estado_reserva(texto: str, phone: str) -> str:
         email = datos.get("email", "")
         telefono = datos.get("telefono", "")
 
-        resultado = registrar_reserva(huesped_id, tipo, check_in_yyyymmdd, check_out_yyyymmdd,
-                                        "flexible", importe_total, hora_llegada,
-                                        nombre=nombre, apellidos=apellidos, cedula=cedula,
-                                        nacionalidad=nacionalidad, email=email, telefono=telefono)
+        resultado = registrar_reserva(
+            huesped_id, tipo, check_in, check_out,
+            "flexible", importe_total, hora_llegada,
+            nombre=nombre, apellidos=apellidos, cedula=cedula,
+            nacionalidad=nacionalidad, email=email, telefono=telefono
+        )
         clear_reservation(phone)
         return resultado
 
     return "Estado de reserva no reconocido. Selecciona una opción del menú."
 
 
-async def _send_welcome_buttons(phone: str):
-    """Envía los botones de bienvenida al usuario."""
-    buttons = [
-        {"id": "btn_habitaciones", "title": "Ver Habitaciones"},
-        {"id": "btn_servicios", "title": "Servicios"},
-        {"id": "btn_contacto", "title": "Contacto"},
-    ]
-    await send_interactive_buttons(phone, WELCOME_TEXT, buttons)
-
-
 async def _handle_interactive(phone: str, selected_id: str):
-    """Maneja los eventos interactivos (botones presionados o listas seleccionadas)."""
     try:
         if selected_id == "btn_habitaciones":
             sections = [
@@ -575,7 +541,7 @@ async def _handle_interactive(phone: str, selected_id: str):
             set_reservation_state(phone, RESERVATION_STATE_FECHAS)
             await send_whatsapp_message(
                 phone,
-                f"🏠 Tipo seleccionado: {tipo}\n\n 📅 Indícame las fechas de entrada y salida en formato YYYY-MM-DD.\nEjemplo: 2026-09-25 -- 2026-09-28",
+                f"📌 Tipo seleccionado: {tipo}\n\n📅 Envíame tus fechas de entrada y salida en formato YYYY-MM-DD.\nEjemplo: 2026-09-25 -- 2026-09-28",
             )
         elif selected_id == "opt_consultar":
             set_pending_action(phone, "consultar_reserva")
@@ -625,7 +591,7 @@ async def _handle_interactive(phone: str, selected_id: str):
             habitacion_tipo = selected_id.replace("habitacion_", "").capitalize()
             await send_whatsapp_message(
                 phone,
-                f"Hemso recibido interés en la habitación {habitacion_tipo}. Un asesor se pondrá en contacto contigo brevemente.",
+                f"Hemos recibido interés en la habitación {habitacion_tipo}. Un asesor se pondrá en contacto contigo brevemente.",
             )
         else:
             await send_whatsapp_message(
@@ -678,5 +644,3 @@ def extract_message(body: dict) -> dict | None:
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host=settings.app_host, port=settings.app_port)
-
-    
