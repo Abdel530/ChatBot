@@ -33,10 +33,10 @@ MENSAJE_ERROR_DB = (
 
 def ddmmyyyy_to_yyyymmdd(date_str: str) -> str:
     try:
-        dt = datetime.strptime(date_str.strip(), "%d-%m-%Y")
+        dt = datetime.strptime(date_str.strip(), "%Y-%m-%d")
         return dt.strftime("%Y-%m-%d")
     except ValueError:
-        raise ValueError(f"Formato de fecha inválido: '{date_str}'. Usa DD-MM-YYYY (ejemplo: 25-09-2026).")
+        raise ValueError(f"Formato de fecha inválido: '{date_str}'. Usa YYYY-MM-DD (ejemplo: 2026-09-25).")
 
 
 def validar_hora_12h(hora_str: str) -> str:
