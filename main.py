@@ -1,3 +1,4 @@
+import re
 from fastapi import FastAPI, Request, Query
 from fastapi.responses import PlainTextResponse
 
@@ -33,6 +34,8 @@ from tools.servicios import consultar_servicios
 from tools.consulta_reserva import consultar_reserva
 from tools.registro_llegada_db import registrar_llegada_db
 from tools.cancelacion_db import cancelar_reserva_db
+import re
+
 from tools.nueva_reserva import consultar_disponibilidad, registrar_reserva, upsert_huesped, ddmmyyyy_to_yyyymmdd, validar_hora_12h
 from google.genai.types import FunctionDeclaration
 
@@ -404,37 +407,27 @@ async def _procesar_estado_reserva(texto: str, phone: str) -> str:
 
     if estado == RESERVATION_STATE_FECHAS:
         texto = texto.strip()
-        partes = texto.split()
-        if len(partes) < 2:
-            return "📅 Envíame tus fechas de entrada y salida en formato YYYY-MM-DD.\nEjemplo: 2026-09-25 2026-09-28"
+        fechas = re.findall(r'\d{2}-\d{2}-\d{4}', texto)
+
+        if len(fechas) < 2:
+            return "Formato de fecha no válido. Por favor envíalo así: DD-MM-YYYY -- DD-MM-YYYY (Ejemplo: 25-09-2026 -- 28-09-2026)."
 
         try:
-            check_in = partes[0]
-            check_out = partes[1]
-            if len(partes) >= 3:
-                huesped_id = int(partes[2])
-            else:
-                huesped_id = 1
-        except (ValueError, IndexError):
-            return "Formato inválido. Usa: YYYY-MM-DD YYYY-MM-DD [huesped_id]"
+            check_in = ddmmyyyy_to_yyyymmdd(fechas[0])
+            check_out = ddmmyyyy_to_yyyymmdd(fechas[1])
+        except ValueError as e:
+            return str(e)
 
-        resultado_disp = consultar_disponibilidad(check_in, check_out)
-        if resultado_disp.startswith("Lo sentimos"):
-            return resultado_disp
-        if "Formato inválido" in resultado_disp:
+        resultado_disp = consultar_disponibilidad(fechas[0], fechas[1])
+        if resultado_disp.startswith("Lo sentimos") or resultado_disp.startswith("Formato de fecha"):
             return resultado_disp
 
-        set_reservation_data(phone, "check_in", check_in)
-        set_reservation_data(phone, "check_out", check_out)
-        set_reservation_data(phone, "huesped_id", huesped_id)
+        set_reservation_data(phone, "check_in", fechas[0])
+        set_reservation_data(phone, "check_out", fechas[1])
         set_reservation_state(phone, RESERVATION_STATE_PERSONAL)
 
         tipo = get_reservation_data(phone, "tipo_habitacion")
-        return (
-            f"🏨 {tipo} - Disponibilidad verificada.\n\n"
-            f"📝 Paso 1/5: Nombre y Apellido\n"
-            f"Envíame tu nombre completo."
-        )
+        return "¡Habitación disponible para esas fechas! Por favor, indícame tu Nombre."
 
     if estado == RESERVATION_STATE_PERSONAL:
         paso = get_reservation_data(phone, "paso_personal") or 0

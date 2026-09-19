@@ -52,9 +52,11 @@ def consultar_disponibilidad(fecha_entrada: str, fecha_salida: str) -> str:
     try:
         check_in = ddmmyyyy_to_yyyymmdd(fecha_entrada)
         check_out = ddmmyyyy_to_yyyymmdd(fecha_salida)
+        __validar_fechas(check_in, check_out)
     except ValueError as e:
         return str(e)
-    __validar_fechas(check_in, check_out)
+    except Exception:
+        return MENSAJE_ERROR_DB
 
     try:
         conn = sqlite3.connect(str(DB_PATH))
