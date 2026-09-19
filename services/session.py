@@ -6,7 +6,7 @@ RESERVATION_STATE_IDLE = "idle"
 RESERVATION_STATE_SELECT_HABITACION = "select_habitacion"
 RESERVATION_STATE_FECHAS = "fechas"
 RESERVATION_STATE_PERSONAL = "personal"
-RESERVATION_STATE_TRANSFER = "transfer"
+RESERVATION_STATE_HORA_LLEGADA = "hora_llegada"
 RESERVATION_STATE_COMPLETE = "complete"
 
 PASO_PERSONAL_NAMES = ["nombre", "cedula", "nacionalidad", "email", "telefono"]

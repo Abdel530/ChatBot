@@ -3,7 +3,7 @@ CREATE TABLE IF NOT EXISTS huespedes (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     telefono TEXT UNIQUE NOT NULL,
     nombre TEXT NOT NULL,
-    documento TEXT,
+    apellidos TEXT,
     nacionalidad TEXT,
     email TEXT
 );
