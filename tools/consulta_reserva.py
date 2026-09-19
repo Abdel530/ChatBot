@@ -24,15 +24,21 @@ def consultar_reserva(identificador: str) -> str:
         digitos = ''.join(c for c in identificador if c.isdigit())
 
         if len(digitos) >= 7:
+            try:
+                id_param = int(digitos)
+            except ValueError:
+                id_param = -1
             cursor.execute(
                 """SELECT r.id, r.check_in, r.check_out, r.politica, r.importe_total, r.estado,
-                          h.nombre, h.telefono, hab.numero as habitacion_numero, hab.tipo as habitacion_tipo
+                          r.hora_llegada,
+                          h.nombre, h.apellidos, h.cedula, h.telefono,
+                          hab.numero as habitacion_numero, hab.tipo as habitacion_tipo
                    FROM reservas r
                    JOIN huespedes h ON r.huesped_id = h.id
                    JOIN habitaciones hab ON r.habitacion_id = hab.id
-                   WHERE h.telefono = ? OR r.id = ?
+                   WHERE h.telefono = ? OR h.cedula = ? OR r.id = ?
                    ORDER BY r.check_in DESC""",
-                (digitos, int(digitos)),
+                (digitos, digitos, id_param),
             )
         else:
             conn.close()
@@ -46,20 +52,21 @@ def consultar_reserva(identificador: str) -> str:
         return MENSAJE_ERROR_DB
 
     if not rows:
-        return MENSAJE_SIN_REGISTROS
+        return "No se encontraron registros. Verifica tu número de cédula o teléfono e intenta de nuevo."
 
     lineas = []
     for row in rows:
         check_in = __parse_date(row["check_in"])
         dias_restantes = (check_in - datetime.now()).days
+        nombre_completo = f"{row['nombre']} {row['apellidos']}".strip()
+        hora_llegada = row["hora_llegada"] or "No especificada"
         lineas.append(
             f"✅ Reserva #{row['id']}:\n"
-            f"- Huésped: {row['nombre']} ({row['telefono']})\n"
-            f"- Habitación: {row['habitacion_numero']} ({row['habitacion_tipo']})\n"
-            f"- Check-in: {row['check_in']} ({dias_restantes} días restantes)\n"
-            f"- Check-out: {row['check_out']}\n"
-            f"- Política: {row['politica']}\n"
-            f"- Importe total: {row['importe_total']:.2f}€\n"
+            f"- Nombre completo: {nombre_completo}\n"
+            f"- Teléfono: {row['telefono']}\n"
+            f"- Tipo de habitación: {row['habitacion_tipo']}\n"
+            f"- Fechas de estancia: {row['check_in']} al {row['check_out']} ({dias_restantes} días restantes)\n"
+            f"- Hora estimada de llegada: {hora_llegada}\n"
             f"- Estado: {row['estado']}"
         )
 

@@ -499,12 +499,10 @@ async def _procesar_estado_reserva(texto: str, phone: str) -> str:
         email = datos.get("email", "")
         telefono = datos.get("telefono", "")
 
-        upsert_huesped(huesped_id, nombre=nombre, apellidos=apellidos,
-                        cedula=cedula, nacionalidad=nacionalidad,
-                        email=email, telefono=telefono)
-
         resultado = registrar_reserva(huesped_id, tipo, check_in_yyyymmdd, check_out_yyyymmdd,
-                                        "flexible", importe_total, hora_llegada)
+                                        "flexible", importe_total, hora_llegada,
+                                        nombre=nombre, apellidos=apellidos, cedula=cedula,
+                                        nacionalidad=nacionalidad, email=email, telefono=telefono)
         clear_reservation(phone)
         return resultado
 

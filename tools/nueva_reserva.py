@@ -169,7 +169,9 @@ def obtener_habitacion_disponible(tipo_habitacion: str, check_in: str, check_out
 
 
 def registrar_reserva(huesped_id: int, tipo_habitacion: str, check_in: str, check_out: str,
-                         politica: str, importe_total: float, hora_llegada: str = None) -> str:
+                         politica: str, importe_total: float, hora_llegada: str = None,
+                         nombre: str = None, apellidos: str = None, cedula: str = None,
+                         nacionalidad: str = None, email: str = None, telefono: str = None) -> str:
     try:
         habitacion_id = obtener_habitacion_disponible(tipo_habitacion, check_in, check_out)
         if not habitacion_id:
@@ -177,6 +179,21 @@ def registrar_reserva(huesped_id: int, tipo_habitacion: str, check_in: str, chec
 
         conn = sqlite3.connect(str(DB_PATH))
         cursor = conn.cursor()
+
+        if nombre or apellidos or cedula or nacionalidad or email or telefono:
+            cursor.execute("SELECT id FROM huespedes WHERE id = ?", (huesped_id,))
+            existing = cursor.fetchone()
+            if existing:
+                cursor.execute(
+                    "UPDATE huespedes SET nombre=?, apellidos=?, cedula=?, nacionalidad=?, email=?, telefono=? WHERE id=?",
+                    (nombre, apellidos, cedula, nacionalidad, email, telefono, huesped_id),
+                )
+            else:
+                cursor.execute(
+                    "INSERT INTO huespedes (id, nombre, apellidos, cedula, nacionalidad, email, telefono) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                    (huesped_id, nombre or f"Huésped_{huesped_id}", apellidos or "", cedula or "", nacionalidad or "", email or "", telefono or ""),
+                )
+
         cursor.execute(
             "INSERT INTO reservas (huesped_id, habitacion_id, check_in, check_out, politica, estado, importe_total, hora_llegada) VALUES (?, ?, ?, ?, ?, 'CONFIRMADA', ?, ?)",
             (huesped_id, habitacion_id, check_in, check_out, importe_total, hora_llegada or ""),
