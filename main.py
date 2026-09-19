@@ -304,6 +304,7 @@ async def receive_webhook(request: Request):
                 print(f"ERROR META API: {str(e)}", flush=True)
                 try:
                     fallback = (
+                        "¡Hola! Bienvenido/a al Hotel Paraíso. 🌴\n¿En qué puedo ayudarte hoy?\n"
                         "📋 **Menú Principal:**\n"
                         "1. 🏨 Nueva reserva\n"
                         "2. 🔍 Consultar reserva\n"

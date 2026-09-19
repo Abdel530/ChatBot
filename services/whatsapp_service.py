@@ -77,7 +77,7 @@ async def send_interactive_list(to_phone: str) -> dict | None:
                 "text": "Menú Principal"
             },
             "body": {
-                "text": "Selecciona la opción que deseas:"
+                "text": "¡Hola! Bienvenido/a al Hotel Paraíso. 🌴\n¿En qué puedo ayudarte hoy? Por favor selecciona una opción del menú:"
             },
             "action": {
                 "button": "Ver opciones",
