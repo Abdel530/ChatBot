@@ -19,7 +19,7 @@ def consultar_servicios() -> str:
         conn = sqlite3.connect(str(DB_PATH))
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
-        cursor.execute("SELECT nombre, descripcion, horario, ubicacion FROM servicios ORDER BY id")
+        cursor.execute("SELECT * FROM servicios ORDER BY id")
         rows = cursor.fetchall()
         conn.close()
     except sqlite3.Error:
