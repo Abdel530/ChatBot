@@ -8,8 +8,17 @@ from services.whatsapp_service import (
     send_interactive_list,
     send_interactive_list_custom,
     format_whatsapp_message,
+    send_room_type_list,
+    send_transfer_buttons,
 )
-from services.session import add_message, get_history, clear_session, get_pending_action, clear_pending_action
+from services.session import (
+    add_message, get_history, clear_session, get_pending_action, clear_pending_action,
+    set_reservation_state, get_reservation_state, set_reservation_data, get_reservation_data,
+    clear_reservation, clear_reservation_data,
+    RESERVATION_STATE_IDLE, RESERVATION_STATE_SELECT_HABITACION, RESERVATION_STATE_FECHAS,
+    RESERVATION_STATE_PERSONAL, RESERVATION_STATE_TRANSFER, RESERVATION_STATE_COMPLETE,
+    PASO_PERSONAL_NAMES,
+)
 from services.gemini_service import chat_with_tools_and_session, TOOLS, TOOL_HANDLERS, execute_tool, register_tool, process_message
 from tools.reservas import (
     buscar_reserva,
@@ -25,7 +34,7 @@ from tools.servicios import consultar_servicios
 from tools.consulta_reserva import consultar_reserva
 from tools.registro_llegada_db import registrar_llegada_db
 from tools.cancelacion_db import cancelar_reserva_db
-from tools.nueva_reserva import consultar_disponibilidad, registrar_reserva, listar_tipos_habitaciones
+from tools.nueva_reserva import consultar_disponibilidad, registrar_reserva, upsert_huesped, registrar_reserva_con_transfer, guardar_itinerario_vuelo
 from google.genai.types import FunctionDeclaration
 
 app = FastAPI(title="Hotel WhatsApp Bot", version="0.2.0")
@@ -300,8 +309,6 @@ async def receive_webhook(request: Request):
                     resultado = registrar_llegada_db(text)
                 elif pending_action == "cancelar_reserva":
                     resultado = cancelar_reserva_db(text)
-                elif pending_action == "nueva_reserva":
-                    resultado = await _procesar_nueva_reserva(text, phone)
                 elif pending_action == "escalar_recepcion":
                     resultado = escalar_recepcion(phone, text)
                 else:
@@ -314,6 +321,19 @@ async def receive_webhook(request: Request):
                 except Exception:
                     pass
             print(f"[POST /webhook] {phone}: acción pendiente '{pending_action}' completada - 200 OK")
+            return {"status": "ok"}
+
+        estado_reserva = get_reservation_state(phone)
+        if estado_reserva != RESERVATION_STATE_IDLE:
+            try:
+                resultado = await _procesar_estado_reserva(text, phone)
+                await send_whatsapp_message(phone, resultado)
+            except Exception as e:
+                print(f"[POST /webhook] {phone}: Error en estado de reserva: {e}", flush=True)
+                try:
+                    await send_whatsapp_message(phone, "Hubo un problema. Intenta de nuevo o selecciona el menú.")
+                except Exception:
+                    pass
             return {"status": "ok"}
 
         add_message(phone, "user", text)
@@ -377,48 +397,111 @@ async def receive_webhook(request: Request):
     return {"status": "ok"}
 
 
-async def _procesar_nueva_reserva(texto: str, phone: str) -> str:
-    partes = texto.strip().split()
-    if len(partes) < 2:
-        return "📅 Para hacer una reserva, envíame tus fechas de entrada y salida en formato YYYY-MM-DD.\nEjemplo: 2026-09-25 2026-09-28"
+async def _procesar_estado_reserva(texto: str, phone: str) -> str:
+    estado = get_reservation_state(phone)
 
-    try:
-        check_in = partes[0]
-        check_out = partes[1]
-        if len(partes) >= 3:
-            huesped_id = int(partes[2])
+    if estado == RESERVATION_STATE_SELECT_HABITACION:
+        return "🤷 No entendí la selección. Usa el menú para elegir un tipo de habitación."
+
+    if estado == RESERVATION_STATE_FECHAS:
+        texto = texto.strip()
+        partes = texto.split()
+        if len(partes) < 2:
+            return "📅 Envíame tus fechas de entrada y salida en formato YYYY-MM-DD.\nEjemplo: 2026-09-25 2026-09-28"
+
+        try:
+            check_in = partes[0]
+            check_out = partes[1]
+            if len(partes) >= 3:
+                huesped_id = int(partes[2])
+            else:
+                huesped_id = 1
+        except (ValueError, IndexError):
+            return "Formato inválido. Usa: YYYY-MM-DD YYYY-MM-DD [huesped_id]"
+
+        resultado_disp = consultar_disponibilidad(check_in, check_out)
+        if resultado_disp.startswith("Lo sentimos"):
+            return resultado_disp
+        if "Formato inválido" in resultado_disp:
+            return resultado_disp
+
+        set_reservation_data(phone, "check_in", check_in)
+        set_reservation_data(phone, "check_out", check_out)
+        set_reservation_data(phone, "huesped_id", huesped_id)
+        set_reservation_state(phone, RESERVATION_STATE_PERSONAL)
+
+        tipo = get_reservation_data(phone, "tipo_habitacion")
+        return (
+            f"🏨 {tipo} - Disponibilidad verificada.\n\n"
+            f"📝 Paso 1/5: Nombre y Apellido\n"
+            f"Envíame tu nombre completo."
+        )
+
+    if estado == RESERVATION_STATE_PERSONAL:
+        paso = get_reservation_data(phone, "paso_personal") or 0
+        datos = get_reservation_data(phone)
+        texto = texto.strip()
+        huesped_id = datos.get("huesped_id", 1)
+
+        if not texto:
+            return "Por favor, envía la información solicitada."
+
+        if paso == 0:
+            set_reservation_data(phone, "nombre", texto)
+            set_reservation_data(phone, "paso_personal", 1)
+            upsert_huesped(huesped_id, nombre=texto)
+            return "📋 Paso 2/5: Número de Cédula o Pasaporte\nEnvíame tu número de documento."
+        elif paso == 1:
+            set_reservation_data(phone, "cedula", texto)
+            set_reservation_data(phone, "paso_personal", 2)
+            upsert_huesped(huesped_id, documento=texto)
+            return "🌍 Paso 3/5: Nacionalidad\nEnvíame tu nacionalidad."
+        elif paso == 2:
+            set_reservation_data(phone, "nacionalidad", texto)
+            set_reservation_data(phone, "paso_personal", 3)
+            upsert_huesped(huesped_id, nacionalidad=texto)
+            return "📧 Paso 4/5: Correo Electrónico\nEnvíame tu correo electrónico."
+        elif paso == 3:
+            set_reservation_data(phone, "email", texto)
+            set_reservation_data(phone, "paso_personal", 4)
+            upsert_huesped(huesped_id, email=texto)
+            return "📱 Paso 5/5: Número Telefónico de Contacto\nEnvíame tu número de teléfono."
+        elif paso == 4:
+            set_reservation_data(phone, "telefono", texto)
+            set_reservation_data(phone, "paso_personal", 5)
+            upsert_huesped(huesped_id, telefono=texto)
+
+            set_reservation_state(phone, RESERVATION_STATE_TRANSFER)
+            await send_transfer_buttons(phone)
+            return "✅ Datos recibidos. Selecciona una opción."
         else:
-            huesped_id = 1
-    except (ValueError, IndexError):
-        return "Formato inválido. Envíame: fecha_entrada fecha_salida [huesped_id]"
+            return "Paso no reconocido. Usa el menú para continuar."
 
-    from services.session import add_message, get_history, set_pending_action, clear_pending_action
+    if estado == RESERVATION_STATE_TRANSFER:
+        datos = get_reservation_data(phone)
+        check_in = datos.get("check_in", "")
+        check_out = datos.get("check_out", "")
+        huesped_id = datos.get("huesped_id", 1)
+        tipo = datos.get("tipo_habitacion", "Sencilla")
+        precio_map = {"Sencilla": 150.0, "Doble": 250.0, "Triple": 350.0, "Cuádruple": 450.0, "Suite": 600.0}
+        importe_total = precio_map.get(tipo, 150.0)
+        texto_limpio = texto.strip().lower()
 
-    resultado_disp = consultar_disponibilidad(check_in, check_out)
-    if resultado_disp.startswith("Lo sentimos"):
-        return resultado_disp
-    if "Formato inválido" in resultado_disp:
-        return resultado_disp
+        if texto_limpio in ("no", "n"):
+            registrar_reserva(huesped_id, 0, check_in, check_out, "flexible", importe_total)
+            clear_reservation(phone)
+            return "¡Muchas gracias por su registro!"
 
-    return resultado_disp + "\n\n📝 Para confirmar, envía: check_in check_out huesped_id habitacion_id politica importe_total"
+        partes_vuelo = texto.split()
+        if len(partes_vuelo) >= 3:
+            vuelo = partes_vuelo[0]
+            aerolinea = partes_vuelo[1]
+            hora = partes_vuelo[2]
+            resultado = registrar_reserva_con_transfer(huesped_id, check_in, check_out, "flexible", importe_total, vuelo, aerolinea, hora)
+            clear_reservation(phone)
+            return resultado
 
-
-def _procesar_confirmacion_reserva(texto: str, phone: str) -> str:
-    partes = texto.strip().split()
-    if len(partes) < 6:
-        return "Datos insuficientes. Envía: check_in check_out huesped_id habitacion_id politica importe_total"
-
-    try:
-        check_in = partes[0]
-        check_out = partes[1]
-        huesped_id = int(partes[2])
-        habitacion_id = int(partes[3])
-        politica = partes[4]
-        importe_total = float(partes[5])
-    except (ValueError, IndexError):
-        return "Formato de confirmación inválido."
-
-    return registrar_reserva(huesped_id, habitacion_id, check_in, check_out, politica, importe_total)
+    return "Estado de reserva no reconocido. Selecciona una opción del menú."
 
 
 async def _send_welcome_buttons(phone: str):
@@ -460,21 +543,42 @@ async def _handle_interactive(phone: str, selected_id: str):
                 "Puedes contactarnos al teléfono +52 123 456 7890 o por email a recepcion@hotelparaiso.com",
             )
         elif selected_id == "opt_nueva_reserva":
-            from services.session import set_pending_action
-            set_pending_action(phone, "nueva_reserva")
+            set_reservation_state(phone, RESERVATION_STATE_SELECT_HABITACION)
+            clear_reservation_data(phone)
+            await send_room_type_list(phone)
+        elif selected_id in ("hab_sencilla", "hab_doble", "hab_triple", "hab_cuadruple", "hab_suite"):
+            tipo_map = {"hab_sencilla": "Sencilla", "hab_doble": "Doble", "hab_triple": "Triple", "hab_cuadruple": "Cuádruple", "hab_suite": "Suite"}
+            tipo = tipo_map.get(selected_id, selected_id)
+            set_reservation_data(phone, "tipo_habitacion", tipo)
+            set_reservation_state(phone, RESERVATION_STATE_FECHAS)
             await send_whatsapp_message(
                 phone,
-                listar_tipos_habitaciones() + "\n\nIndícame tus fechas de entrada y salida.",
+                f"🏠 Tipo seleccionado: {tipo}\n\n📅 Envíame tus fechas de entrada y salida en formato YYYY-MM-DD.",
             )
+        elif selected_id == "transfer_sí":
+            set_reservation_state(phone, RESERVATION_STATE_TRANSFER)
+            await send_whatsapp_message(
+                phone,
+                "✈️ Indicame tu itinerario de vuelo:\nNúmero de vuelo, aerolínea y hora de llegada.\nEjemplo: AV123 Avianca 15:30",
+            )
+        elif selected_id == "transfer_no":
+            datos = get_reservation_data(phone)
+            check_in = datos.get("check_in", "")
+            check_out = datos.get("check_out", "")
+            huesped_id = datos.get("huesped_id", 1)
+            tipo = datos.get("tipo_habitacion", "Sencilla")
+            precio_map = {"Sencilla": 150.0, "Doble": 250.0, "Triple": 350.0, "Cuádruple": 450.0, "Suite": 600.0}
+            importe_total = precio_map.get(tipo, 150.0)
+            registrar_reserva(huesped_id, 0, check_in, check_out, "flexible", importe_total)
+            clear_reservation(phone)
+            await send_whatsapp_message(phone, "¡Muchas gracias por su registro!")
         elif selected_id == "opt_consultar":
-            from services.session import set_pending_action
             set_pending_action(phone, "consultar_reserva")
             await send_whatsapp_message(
                 phone,
                 "🔍 Para consultar tu reserva, envíame tu número de teléfono o ID de reserva.",
             )
         elif selected_id == "opt_llegada":
-            from services.session import set_pending_action
             set_pending_action(phone, "registrar_llegada")
             await send_whatsapp_message(
                 phone,
@@ -484,14 +588,12 @@ async def _handle_interactive(phone: str, selected_id: str):
             resultado = consultar_servicios()
             await send_whatsapp_message(phone, resultado)
         elif selected_id == "opt_cancelar":
-            from services.session import set_pending_action
             set_pending_action(phone, "cancelar_reserva")
             await send_whatsapp_message(
                 phone,
                 "❌ Para cancelar tu reserva, envíame tu número de reserva o teléfono asociado.",
             )
         elif selected_id == "opt_recepcion":
-            from services.session import set_pending_action
             set_pending_action(phone, "escalar_recepcion")
             await send_whatsapp_message(
                 phone,

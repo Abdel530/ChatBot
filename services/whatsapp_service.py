@@ -174,3 +174,36 @@ def format_whatsapp_message(from_number: str, text: str) -> dict:
         "from": from_number,
         "text": text,
     }
+
+
+async def send_room_type_list(to_phone: str) -> dict | None:
+    """Envía una lista interactiva con los tipos de habitación para reserva."""
+    return await send_interactive_list_custom(
+        to_phone,
+        "🏨 Selecciona el tipo de habitación que deseas:",
+        "Tipo Habitación",
+        [
+            {
+                "title": "Tipos Disponibles",
+                "rows": [
+                    {"id": "hab_sencilla", "title": "Habitación Sencilla", "description": "Habitación individual cómoda"},
+                    {"id": "hab_doble", "title": "Habitación Doble", "description": "Habitación doble con camas twin o king"},
+                    {"id": "hab_triple", "title": "Habitación Triple", "description": "Habitación para 3 personas"},
+                    {"id": "hab_cuadruple", "title": "Habitación Cuádruple", "description": "Habitación para 4 personas"},
+                    {"id": "hab_suite", "title": "Suite", "description": "Suite premium con sala de estar"},
+                ],
+            }
+        ],
+    )
+
+
+async def send_transfer_buttons(to_phone: str) -> dict | None:
+    """Envía botones preguntando si necesita servicio de transfer."""
+    return await send_interactive_buttons(
+        to_phone,
+        "¿Requieres servicio de transfer desde el aeropuerto?",
+        [
+            {"id": "transfer_sí", "title": "Sí"},
+            {"id": "transfer_no", "title": "No"},
+        ],
+    )
