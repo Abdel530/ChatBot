@@ -86,12 +86,12 @@ async def send_interactive_list(to_phone: str) -> dict | None:
                         "title": "Gestiones",
                         "rows": [
                             {
-                                "id": "opt_reserva",
+                                "id": "opt_consultar",
                                 "title": "Consultar reserva",
                                 "description": "Ver detalles de tu estancia"
                             },
                             {
-                                "id": "opt_checkin",
+                                "id": "opt_llegada",
                                 "title": "Registrar llegada",
                                 "description": "Información de check-in"
                             },

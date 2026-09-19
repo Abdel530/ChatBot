@@ -9,7 +9,7 @@ from services.whatsapp_service import (
     send_interactive_list_custom,
     format_whatsapp_message,
 )
-from services.session import add_message, get_history, clear_session
+from services.session import add_message, get_history, clear_session, get_pending_action, clear_pending_action
 from services.gemini_service import chat_with_tools_and_session, TOOLS, TOOL_HANDLERS, execute_tool, register_tool, process_message
 from tools.reservas import (
     buscar_reserva,
@@ -22,6 +22,9 @@ from tools.acceso import generar_codigo_acceso
 from tools.limpieza import consultar_limpieza
 from tools.costos import consultar_costo_habitacion
 from tools.servicios import consultar_servicios
+from tools.consulta_reserva import consultar_reserva
+from tools.registro_llegada_db import registrar_llegada_db
+from tools.cancelacion_db import cancelar_reserva_db
 from google.genai.types import FunctionDeclaration
 
 app = FastAPI(title="Hotel WhatsApp Bot", version="0.2.0")
@@ -105,10 +108,33 @@ def _setup_tools():
     register_tool("consultar_servicios", consultar_servicios, FunctionDeclaration(
         name="consultar_servicios",
         description="Consulta la lista de servicios del hotel con horarios y descripciones",
+        parameters={"type": "object", "properties": {}, "required": []},
+    ))
+    register_tool("consultar_reserva", consultar_reserva, FunctionDeclaration(
+        name="consultar_reserva",
+        description="Consulta los detalles de una reserva por teléfono o ID de reserva",
         parameters={
             "type": "object",
-            "properties": {},
-            "required": [],
+            "properties": {"identificador": {"type": "string"}},
+            "required": ["identificador"],
+        },
+    ))
+    register_tool("registrar_llegada_db", registrar_llegada_db, FunctionDeclaration(
+        name="registrar_llegada_db",
+        description="Registra la hora de llegada de un huésped para una reserva",
+        parameters={
+            "type": "object",
+            "properties": {"identificador": {"type": "string"}},
+            "required": ["identificador"],
+        },
+    ))
+    register_tool("cancelar_reserva_db", cancelar_reserva_db, FunctionDeclaration(
+        name="cancelar_reserva_db",
+        description="Cancela una reserva activa por número de reserva o teléfono",
+        parameters={
+            "type": "object",
+            "properties": {"identificador": {"type": "string"}},
+            "required": ["identificador"],
         },
     ))
 
@@ -229,12 +255,37 @@ async def receive_webhook(request: Request):
         ESCAPE_KEYWORDS = {"cancelar", "salir", "reiniciar", "menu", "inicio"}
         if text_lower in ESCAPE_KEYWORDS:
             clear_session(phone)
+            clear_pending_action(phone)
             print(f"[POST /webhook] {phone}: sesión reseteada por comando '{text_lower}'")
             try:
                 await send_interactive_list(phone)
                 print(f"[POST /webhook] {phone}: menú interactivo enviado tras reset - 200 OK")
             except Exception as e:
                 print(f"[POST /webhook] {phone}: Error al enviar menú tras reset: {e}", flush=True)
+            return {"status": "ok"}
+
+        pending_action = get_pending_action(phone)
+        if pending_action:
+            clear_pending_action(phone)
+            try:
+                if pending_action == "consultar_reserva":
+                    resultado = consultar_reserva(text)
+                elif pending_action == "registrar_llegada":
+                    resultado = registrar_llegada_db(text)
+                elif pending_action == "cancelar_reserva":
+                    resultado = cancelar_reserva_db(text)
+                elif pending_action == "escalar_recepcion":
+                    resultado = escalar_recepcion(phone, text)
+                else:
+                    resultado = f"No se reconoce la acción pendiente: {pending_action}"
+                await send_whatsapp_message(phone, resultado)
+            except Exception as e:
+                print(f"[POST /webhook] {phone}: Error en acción pendiente: {e}", flush=True)
+                try:
+                    await send_whatsapp_message(phone, "Hubo un problema al procesar tu solicitud. Intenta de nuevo.")
+                except Exception:
+                    pass
+            print(f"[POST /webhook] {phone}: acción pendiente '{pending_action}' completada - 200 OK")
             return {"status": "ok"}
 
         add_message(phone, "user", text)
@@ -336,28 +387,37 @@ async def _handle_interactive(phone: str, selected_id: str):
                 phone,
                 "Puedes contactarnos al teléfono +52 123 456 7890 o por email a recepcion@hotelparaiso.com",
             )
-        elif selected_id == "opt_reserva":
+        elif selected_id == "opt_consultar":
+            from services.session import set_pending_action
+            set_pending_action(phone, "consultar_reserva")
             await send_whatsapp_message(
                 phone,
-                "Para consultar tu reserva, por favor proporciona tu número de reserva o teléfono asociado.",
+                "🔍 Para consultar tu reserva, envíame tu número de teléfono o ID de reserva.",
             )
-        elif selected_id == "opt_checkin":
+        elif selected_id == "opt_llegada":
+            from services.session import set_pending_action
+            set_pending_action(phone, "registrar_llegada")
             await send_whatsapp_message(
                 phone,
-                "Para registrar tu hora de llegada, indícanos tu número de reserva y la hora estimada de llegada.",
+                "📋 Para registrar tu llegada, envíame tu número de teléfono o ID de reserva.",
             )
         elif selected_id == "opt_servicios":
             resultado = consultar_servicios()
             await send_whatsapp_message(phone, resultado)
         elif selected_id == "opt_cancelar":
+            from services.session import set_pending_action
+            set_pending_action(phone, "cancelar_reserva")
             await send_whatsapp_message(
                 phone,
-                "Para calcular la penalización por cancelación, por favor proporciona tu número de reserva.",
+                "❌ Para cancelar tu reserva, envíame tu número de reserva o teléfono asociado.",
             )
         elif selected_id == "opt_recepcion":
+            from services.session import set_pending_action
+            set_pending_action(phone, "escalar_recepcion")
             await send_whatsapp_message(
                 phone,
-                "Serás conectado con recepción para atención personalizada. Por favor espera un momento.",
+                "🔔 Serás conectado con recepción para atención personalizada. "
+                "Envíame tu consulta y un agente se pondrá en contacto contigo.",
             )
         elif selected_id.startswith("habitacion_"):
             habitacion_tipo = selected_id.replace("habitacion_", "").capitalize()
