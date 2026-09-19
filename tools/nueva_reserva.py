@@ -50,8 +50,8 @@ def validar_hora_12h(hora_str: str) -> str:
 
 def consultar_disponibilidad(fecha_entrada: str, fecha_salida: str) -> str:
     try:
-        check_in = ddmmyyyy_to_yyyymmdd(fecha_entrada)
-        check_out = ddmmyyyy_to_yyyymmdd(fecha_salida)
+        check_in = fecha_entrada
+        check_out = fecha_salida
         __validar_fechas(check_in, check_out)
     except ValueError as e:
         return str(e)

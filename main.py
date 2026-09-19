@@ -425,23 +425,23 @@ async def _procesar_estado_reserva(texto: str, phone: str) -> str:
 
     if estado == RESERVATION_STATE_FECHAS:
         texto = texto.strip()
-        fechas = re.findall(r'\d{2}-\d{2}-\d{4}', texto)
+        fechas = re.findall(r'\d{4}-\d{2}-\d{2}', texto)
 
         if len(fechas) < 2:
-            return "Formato de fecha no válido. Por favor envíalo así: DD-MM-YYYY -- DD-MM-YYYY (Ejemplo: 25-09-2026 -- 28-09-2026)."
+            return "📅 Indícame las fechas de entrada y salida en formato YYYY-MM-DD.\nEjemplo: 2026-09-25 -- 2026-09-28"
 
         try:
-            check_in = ddmmyyyy_to_yyyymmdd(fechas[0])
-            check_out = ddmmyyyy_to_yyyymmdd(fechas[1])
+            check_in = fechas[0]
+            check_out = fechas[1]
         except ValueError as e:
             return str(e)
 
-        resultado_disp = consultar_disponibilidad(fechas[0], fechas[1])
+        resultado_disp = consultar_disponibilidad(check_in, check_out)
         if resultado_disp.startswith("Lo sentimos") or resultado_disp.startswith("Formato de fecha"):
             return resultado_disp
 
-        set_reservation_data(phone, "check_in", fechas[0])
-        set_reservation_data(phone, "check_out", fechas[1])
+        set_reservation_data(phone, "check_in", check_in)
+        set_reservation_data(phone, "check_out", check_out)
         set_reservation_state(phone, RESERVATION_STATE_PERSONAL)
 
         tipo = get_reservation_data(phone, "tipo_habitacion")
@@ -463,9 +463,10 @@ async def _procesar_estado_reserva(texto: str, phone: str) -> str:
         elif paso == 1:
             set_reservation_data(phone, "apellidos", texto)
             set_reservation_data(phone, "paso_personal", 2)
-            return "🆔 Paso 3/7: Cédula / Pasaporte\nEnvíame tu número de cédula o pasaporte."
+            return "🪪 Paso 3/7: Cédula / Pasaporte\nEnvíame tu número de cédula o pasaporte (solo números, sin puntos ni espacios).\nEjemplo: 23445676"
         elif paso == 2:
-            set_reservation_data(phone, "cedula", texto)
+            cedula_limpia = texto.replace('.', '').replace(' ', '').strip()
+            set_reservation_data(phone, "cedula", cedula_limpia)
             set_reservation_data(phone, "paso_personal", 3)
             return "🌍 Paso 4/7: Nacionalidad\nEnvíame tu nacionalidad."
         elif paso == 3:
@@ -504,8 +505,8 @@ async def _procesar_estado_reserva(texto: str, phone: str) -> str:
         except ValueError as e:
             return str(e)
 
-        check_in_yyyymmdd = ddmmyyyy_to_yyyymmdd(check_in)
-        check_out_yyyymmdd = ddmmyyyy_to_yyyymmdd(check_out)
+        check_in_yyyymmdd = check_in
+        check_out_yyyymmdd = check_out
 
         nombre = datos.get("nombre", "")
         apellidos = datos.get("apellidos", "")
@@ -574,7 +575,7 @@ async def _handle_interactive(phone: str, selected_id: str):
             set_reservation_state(phone, RESERVATION_STATE_FECHAS)
             await send_whatsapp_message(
                 phone,
-                f"🏠 Tipo seleccionado: {tipo}\n\n📅 Envíame tus fechas de entrada y salida en formato DD-MM-YYYY.\nEjemplo: 25-09-2026 -- 28-09-2026",
+                f"🏠 Tipo seleccionado: {tipo}\n\n 📅 Indícame las fechas de entrada y salida en formato YYYY-MM-DD.\nEjemplo: 2026-09-25 -- 2026-09-28",
             )
         elif selected_id == "opt_consultar":
             set_pending_action(phone, "consultar_reserva")
