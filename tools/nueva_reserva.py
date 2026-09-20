@@ -154,19 +154,19 @@ def obtener_habitacion_disponible(tipo_habitacion: str, check_in: str, check_out
         conn.row_factory = sqlite3.Row
         cursor = conn.cursor()
         
+        # Consulta simplificada: busca por tipo y descarta habitaciones ocupadas en esas fechas
         query = """
             SELECT id FROM habitaciones 
-            WHERE LOWER(tipo) = LOWER(?) 
-              AND estado_limpieza IN ('limpia', 'en_proceso') 
+            WHERE LOWER(tipo) LIKE LOWER(?) 
               AND id NOT IN (
                   SELECT habitacion_id FROM reservas 
-                  WHERE estado = 'confirmada' 
+                  WHERE LOWER(estado) = 'confirmada' 
                     AND check_out > ? 
                     AND check_in < ?
               ) 
             LIMIT 1
         """
-        cursor.execute(query, (tipo_habitacion, check_in, check_out))
+        cursor.execute(query, (f"%{tipo_habitacion.strip()}%", check_in, check_out))
         row = cursor.fetchone()
         conn.close()
         
@@ -174,7 +174,7 @@ def obtener_habitacion_disponible(tipo_habitacion: str, check_in: str, check_out
             return row["id"]
         return None
     except Exception as e:
-        print(f"Error en obtener_habitacion_disponible: {e}")
+        print(f"❌ Error en obtener_habitacion_disponible: {e}", flush=True)
         return None
 
 
@@ -204,35 +204,28 @@ def registrar_reserva(huesped_id: int, tipo_habitacion: str, check_in: str, chec
                     (huesped_id, nombre or f"Huésped_{huesped_id}", apellidos or "", cedula or "", nacionalidad or "", email or "", telefono or ""),
                 )
 
-        # INSERT CORREGIDO CON 7 PARÁMETROS Y SUS 7 VALORES ALINEADOS:
+       # INSERT CORREGIDO SIN 'hora_llegada' EN RESERVAS
         cursor.execute(
             """
             INSERT INTO reservas (
-                huesped_id, 
-                habitacion_id, 
-                check_in, 
-                check_out, 
-                politica, 
-                estado, 
-                importe_total, 
-                hora_llegada
-            ) VALUES (?, ?, ?, ?, ?, 'CONFIRMADA', ?, ?)
+                huesped_id, habitacion_id, check_in, check_out, politica, estado, importe_total
+            ) VALUES (?, ?, ?, ?, ?, 'CONFIRMADA', ?)
             """,
-            (huesped_id, habitacion_id, check_in, check_out, politica, importe_total, hora_llegada or ""),
+            (huesped_id, habitacion_id, check_in, check_out, politica or "Estándar", float(importe_total) if importe_total else 0.0)
         )
-        conn.commit()
+        
+        # 1. Capturar el ID de la reserva inmediatamente
         reserva_id = cursor.lastrowid
 
+        # 2. Guardar la hora en la tabla 'llegadas'
         if hora_llegada:
             cursor.execute(
                 "INSERT INTO llegadas (reserva_id, hora_llegada) VALUES (?, ?)",
-                (reserva_id, hora_llegada),
+                (reserva_id, hora_llegada)
             )
-            cursor.execute(
-                "UPDATE reservas SET hora_llegada = ? WHERE id = ?",
-                (hora_llegada, reserva_id),
-            )
-            conn.commit()
+
+        # 3. Hacer un solo commit final
+        conn.commit()
 
         conn.close()
 
