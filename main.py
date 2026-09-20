@@ -307,19 +307,6 @@ async def receive_webhook(request: Request):
                 await send_whatsapp_message(phone, fallback)
             return {"status": "ok"}
 
-        # 2. PROCESAR ESTADO ACTIVO DE RESERVA (SI EXISTE)
-        estado_reserva = get_reservation_state(phone)
-        if estado_reserva != RESERVATION_STATE_IDLE:
-            try:
-                resultado = await _procesar_estado_reserva(text, phone)
-                await send_whatsapp_message(phone, resultado)
-            except Exception as e:
-                print(f"[POST /webhook] {phone}: Error en estado de reserva: {e}", flush=True)
-                try:
-                    await send_whatsapp_message(phone, "Hubo un problema. Intenta de nuevo o escribe 'menu'.")
-                except Exception:
-                    pass
-            return {"status": "ok"}
 
         # 3. PROCESAR ACCIONES PENDIENTES
         pending_action = get_pending_action(phone)
