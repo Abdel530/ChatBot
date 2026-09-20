@@ -16,7 +16,7 @@ from services.session import (
     set_reservation_state, get_reservation_state, set_reservation_data, get_reservation_data,
     clear_reservation, clear_reservation_data,
     RESERVATION_STATE_IDLE, RESERVATION_STATE_SELECT_HABITACION, RESERVATION_STATE_FECHAS,
-    RESERVATION_STATE_PERSONAL, RESERVATION_STATE_HORA_LLEGADA, RESERVATION_STATE_COMPLETE,
+    RESERVATION_STATE_PERSONAL, RESERVATION_STATE_COMPLETE,
     PASO_PERSONAL_NAMES,
 )
 from services.gemini_service import chat_with_tools_and_session, TOOLS, TOOL_HANDLERS, execute_tool, register_tool, process_message
@@ -24,7 +24,6 @@ from tools.reservas import (
     buscar_reserva,
     calcular_penalizacion,
     confirmar_cancelacion,
-    registrar_llegada,
     escalar_recepcion,
 )
 from tools.acceso import generar_codigo_acceso
@@ -36,8 +35,7 @@ from tools.registro_llegada_db import registrar_llegada_db
 from tools.cancelacion_db import cancelar_reserva_db
 
 from tools.nueva_reserva import (
-    consultar_disponibilidad, registrar_reserva, upsert_huesped,
-    ddmmyyyy_to_yyyymmdd, validar_hora_12h,
+    consultar_disponibilidad, registrar_reserva,
 )
 from google.genai.types import FunctionDeclaration
 
@@ -81,15 +79,6 @@ def _setup_tools():
             "type": "object",
             "properties": {"habitacion_id": {"type": "integer"}},
             "required": ["habitacion_id"],
-        },
-    ))
-    register_tool("registrar_llegada", registrar_llegada, FunctionDeclaration(
-        name="registrar_llegada",
-        description="Registra la hora estimada de llegada del huésped",
-        parameters={
-            "type": "object",
-            "properties": {"reserva_id": {"type": "integer"}, "hora_llegada": {"type": "string"}},
-            "required": ["reserva_id", "hora_llegada"],
         },
     ))
     register_tool("consultar_limpieza", consultar_limpieza, FunctionDeclaration(
@@ -457,46 +446,28 @@ async def _procesar_estado_reserva(texto: str, phone: str) -> str:
             return "📱 Paso 6/7: Número Telefónico de Contacto\nEnvíame tu número de teléfono."
         elif paso == 5:
             set_reservation_data(phone, "telefono", texto)
-            set_reservation_data(phone, "paso_personal", 6)
-            set_reservation_state(phone, RESERVATION_STATE_HORA_LLEGADA)
-            return (
-                "✅ Datos personales recibidos.\n\n"
-                "🕐 Paso 7/7: Hora Estimada de Llegada\n"
-                "Envíame tu hora estimada de llegada en formato 12 horas.\n"
-                "Ejemplo: 8:30 PM o 10:00 AM"
+            check_in = get_reservation_data(phone, "check_in")
+            check_out = get_reservation_data(phone, "check_out")
+            tipo = get_reservation_data(phone, "tipo_habitacion")
+            huesped_id = get_reservation_data(phone, "huesped_id") or 1
+            precio_map = {"Sencilla": 150.0, "Doble": 250.0, "Triple": 350.0, "Cuádruple": 450.0, "Suite": 600.0}
+            importe_total = precio_map.get(tipo, 150.0)
+            nombre = get_reservation_data(phone, "nombre")
+            apellidos = get_reservation_data(phone, "apellidos")
+            cedula = get_reservation_data(phone, "cedula")
+            nacionalidad = get_reservation_data(phone, "nacionalidad")
+            email = get_reservation_data(phone, "email")
+
+            registrar_reserva(
+                huesped_id, tipo, check_in, check_out,
+                "flexible", importe_total,
+                nombre=nombre, apellidos=apellidos, cedula=cedula,
+                nacionalidad=nacionalidad, email=email, telefono=texto
             )
+            clear_reservation(phone)
+            return "Muchas gracias por su registro"
         else:
             return "Paso no reconocido. Usa el menú para continuar."
-
-    if estado == RESERVATION_STATE_HORA_LLEGADA:
-        datos = get_reservation_data(phone)
-        check_in = datos.get("check_in", "")
-        check_out = datos.get("check_out", "")
-        huesped_id = datos.get("huesped_id", 1)
-        tipo = datos.get("tipo_habitacion", "Sencilla")
-        precio_map = {"Sencilla": 150.0, "Doble": 250.0, "Triple": 350.0, "Cuádruple": 450.0, "Suite": 600.0}
-        importe_total = precio_map.get(tipo, 150.0)
-
-        try:
-            hora_llegada = validar_hora_12h(texto)
-        except ValueError as e:
-            return str(e)
-
-        nombre = datos.get("nombre", "")
-        apellidos = datos.get("apellidos", "")
-        cedula = datos.get("cedula", "")
-        nacionalidad = datos.get("nacionalidad", "")
-        email = datos.get("email", "")
-        telefono = datos.get("telefono", "")
-
-        resultado = registrar_reserva(
-            huesped_id, tipo, check_in, check_out,
-            "flexible", importe_total, hora_llegada,
-            nombre=nombre, apellidos=apellidos, cedula=cedula,
-            nacionalidad=nacionalidad, email=email, telefono=telefono
-        )
-        clear_reservation(phone)
-        return resultado
 
     return "Estado de reserva no reconocido. Selecciona una opción del menú."
 
