@@ -1,9 +1,4 @@
-import sqlite3
-from pathlib import Path
-
 from database.db import get_connection
-
-DB_PATH = Path(__file__).parent.parent / "hotel.db"
 
 MENSAJE_SIN_REGISTROS = (
     "No hay servicios registrados en el sistema actualmente."
@@ -14,16 +9,16 @@ MENSAJE_ERROR_DB = (
 )
 
 
+def _row(row):
+    return row.asdict() if row else None
+
+
 def consultar_servicios() -> str:
     try:
-        conn = sqlite3.connect(str(DB_PATH))
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM servicios ORDER BY id")
-        rows = cursor.fetchall()
-        conn.close()
-    except sqlite3.Error:
-        return MENSAJE_ERROR_DB
+        client = get_connection()
+        result = client.execute("SELECT * FROM servicios ORDER BY id")
+        rows = [_row(r) for r in result.rows]
+        client.close()
     except Exception:
         return MENSAJE_ERROR_DB
 

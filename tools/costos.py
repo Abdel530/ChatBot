@@ -1,9 +1,4 @@
-import sqlite3
-from pathlib import Path
-
 from database.db import get_connection
-
-DB_PATH = Path(__file__).parent.parent / "hotel.db"
 
 MENSAJE_SIN_REGISTROS = (
     "No se encontró la habitación con los datos ingresados. "
@@ -15,16 +10,16 @@ MENSAJE_ERROR_DB = (
 )
 
 
+def _row(row):
+    return row.asdict() if row else None
+
+
 def consultar_costo_habitacion(habitacion_id: int) -> str:
     try:
-        conn = sqlite3.connect(str(DB_PATH))
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM habitaciones WHERE id = ?", (habitacion_id,))
-        habitacion = cursor.fetchone()
-        conn.close()
-    except sqlite3.Error:
-        return MENSAJE_ERROR_DB
+        client = get_connection()
+        result = client.execute("SELECT * FROM habitaciones WHERE id = ?", (habitacion_id,))
+        habitacion = _row(result.rows[0]) if result.rows else None
+        client.close()
     except Exception:
         return MENSAJE_ERROR_DB
 

@@ -10,6 +10,8 @@ class Settings(BaseSettings):
     app_host: str = "0.0.0.0"
     app_port: int = 8000
     debug: bool = True
+    turso_database_url: str
+    turso_auth_token: str
 
     class Config:
         env_file = ".env"

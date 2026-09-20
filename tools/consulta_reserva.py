@@ -1,10 +1,6 @@
-import sqlite3
 from datetime import datetime
-from pathlib import Path
 
 from database.db import get_connection
-
-DB_PATH = Path(__file__).parent.parent / "hotel.db"
 
 MENSAJE_SIN_REGISTROS = (
     "No se encontró ninguna reserva con ese número o teléfono. "
@@ -16,11 +12,13 @@ MENSAJE_ERROR_DB = (
 )
 
 
+def _row(row):
+    return row.asdict() if row else None
+
+
 def consultar_reserva(identificador: str) -> str:
     try:
-        conn = sqlite3.connect(str(DB_PATH))
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
+        client = get_connection()
         digitos = ''.join(c for c in identificador if c.isdigit())
 
         if len(digitos) >= 7:
@@ -28,7 +26,7 @@ def consultar_reserva(identificador: str) -> str:
                 id_param = int(digitos)
             except ValueError:
                 id_param = -1
-            cursor.execute(
+            result = client.execute(
                 """SELECT r.id, r.check_in, r.check_out, r.politica, r.importe_total, r.estado,
                           r.hora_llegada,
                           h.nombre, h.apellidos, h.cedula, h.telefono,
@@ -41,13 +39,11 @@ def consultar_reserva(identificador: str) -> str:
                 (digitos, digitos, id_param),
             )
         else:
-            conn.close()
+            client.close()
             return MENSAJE_SIN_REGISTROS
 
-        rows = cursor.fetchall()
-        conn.close()
-    except sqlite3.Error:
-        return MENSAJE_ERROR_DB
+        rows = [_row(r) for r in result.rows]
+        client.close()
     except Exception:
         return MENSAJE_ERROR_DB
 
@@ -56,7 +52,7 @@ def consultar_reserva(identificador: str) -> str:
 
     lineas = []
     for row in rows:
-        check_in = __parse_date(row["check_in"])
+        check_in = datetime.fromisoformat(row["check_in"])
         dias_restantes = (check_in - datetime.now()).days
         nombre_completo = f"{row['nombre']} {row['apellidos']}".strip()
         hora_llegada = row["hora_llegada"] or "No especificada"
@@ -71,10 +67,3 @@ def consultar_reserva(identificador: str) -> str:
         )
 
     return "\n\n".join(lineas)
-
-
-def __parse_date(date_str: str) -> datetime:
-    try:
-        return datetime.fromisoformat(date_str)
-    except Exception:
-        return datetime.now()

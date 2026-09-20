@@ -1,10 +1,6 @@
-import sqlite3
 from datetime import datetime, timedelta
-from pathlib import Path
 
 from database.db import get_connection
-
-DB_PATH = Path(__file__).parent.parent / "hotel.db"
 
 POLITICAS = {
     "flexible": {"dias_min": 1, "porcentaje": 0},
@@ -18,17 +14,16 @@ MENSAJE_ERROR_DB = (
 )
 
 
-def _get_db():
-    conn = sqlite3.connect(str(DB_PATH))
-    conn.row_factory = sqlite3.Row
-    return conn
+def _row_to_dict(row):
+    if row is None:
+        return None
+    return row.asdict()
 
 
 def buscar_reserva(telefono: str) -> str:
     try:
-        conn = _get_db()
-        cursor = conn.cursor()
-        cursor.execute(
+        client = get_connection()
+        result = client.execute(
             """SELECT r.id, r.check_in, r.check_out, r.politica, r.importe_total, r.estado,
                       h.nombre, hab.numero as habitacion_numero
                FROM reservas r
@@ -38,10 +33,8 @@ def buscar_reserva(telefono: str) -> str:
                ORDER BY r.check_in DESC LIMIT 1""",
             (telefono,),
         )
-        row = cursor.fetchone()
-        conn.close()
-    except sqlite3.Error:
-        return MENSAJE_ERROR_DB
+        row = _row_to_dict(result.rows[0]) if result.rows else None
+        client.close()
     except Exception:
         return MENSAJE_ERROR_DB
 
@@ -62,13 +55,10 @@ def buscar_reserva(telefono: str) -> str:
 
 def calcular_penalizacion(reserva_id: int) -> str:
     try:
-        conn = _get_db()
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM reservas WHERE id = ?", (reserva_id,))
-        row = cursor.fetchone()
-        conn.close()
-    except sqlite3.Error:
-        return MENSAJE_ERROR_DB
+        client = get_connection()
+        result = client.execute("SELECT * FROM reservas WHERE id = ?", (reserva_id,))
+        row = _row_to_dict(result.rows[0]) if result.rows else None
+        client.close()
     except Exception:
         return MENSAJE_ERROR_DB
 
@@ -100,93 +90,81 @@ def calcular_penalizacion(reserva_id: int) -> str:
 
 def confirmar_cancelacion(reserva_id: int) -> str:
     try:
-        conn = _get_db()
-        cursor = conn.cursor()
-        cursor.execute("SELECT estado FROM reservas WHERE id = ?", (reserva_id,))
-        row = cursor.fetchone()
+        client = get_connection()
+        result = client.execute("SELECT estado FROM reservas WHERE id = ?", (reserva_id,))
+        row = _row_to_dict(result.rows[0]) if result.rows else None
 
         if not row:
-            conn.close()
+            client.close()
             return f"No se encontró la reserva con ID {reserva_id}."
 
         if row["estado"] == "cancelada":
-            conn.close()
+            client.close()
             return f"La reserva {reserva_id} ya está cancelada."
 
-        cursor.execute("UPDATE reservas SET estado = 'cancelada' WHERE id = ?", (reserva_id,))
-        conn.commit()
-        conn.close()
+        client.execute("UPDATE reservas SET estado = 'cancelada' WHERE id = ?", (reserva_id,))
+        client.close()
         return f"✅ Reserva {reserva_id} cancelada correctamente."
-    except sqlite3.Error:
-        return MENSAJE_ERROR_DB
     except Exception:
         return MENSAJE_ERROR_DB
 
 
 def registrar_llegada(reserva_id: int, hora_llegada: str) -> str:
     try:
-        conn = _get_db()
-        cursor = conn.cursor()
-        cursor.execute(
+        client = get_connection()
+        result = client.execute(
             "SELECT r.*, h.nombre FROM reservas r JOIN huespedes h ON r.huesped_id = h.id WHERE r.id = ?",
             (reserva_id,),
         )
-        row = cursor.fetchone()
+        row = _row_to_dict(result.rows[0]) if result.rows else None
 
         if not row:
-            conn.close()
+            client.close()
             return f"No se encontró la reserva con ID {reserva_id}."
 
-        cursor.execute(
+        client.execute(
             "INSERT INTO llegadas (reserva_id, hora_llegada) VALUES (?, ?)",
             (reserva_id, hora_llegada),
         )
-        cursor.execute("UPDATE reservas SET hora_llegada = ? WHERE id = ?", (hora_llegada, reserva_id))
-        conn.commit()
-        conn.close()
+        client.execute(
+            "UPDATE reservas SET hora_llegada = ? WHERE id = ?",
+            (hora_llegada, reserva_id),
+        )
+        client.close()
         return (
             f"✅ Hora de llegada registrada para la reserva {reserva_id}.\n"
             f"- Hora estimada: {hora_llegada}\n"
             f"- Huésped: {row['nombre']}\n"
             f"- Habitación: {row['habitacion_id']}"
         )
-    except sqlite3.Error:
-        return MENSAJE_ERROR_DB
     except Exception:
         return MENSAJE_ERROR_DB
 
 
 def escalar_recepcion(telefono: str, mensaje: str) -> str:
     try:
-        conn = sqlite3.connect(str(DB_PATH))
-        cursor = conn.cursor()
-        cursor.execute(
+        client = get_connection()
+        client.execute(
             "INSERT INTO escalaciones (telefono, mensaje) VALUES (?, ?)",
             (telefono, mensaje),
         )
-        conn.commit()
-        conn.close()
+        client.close()
         return (
             "Un agente de recepción le contactará en breve.\n"
             "Su mensaje ha sido registrado y será atendido lo antes posible."
         )
-    except sqlite3.Error:
-        return "No fue posible registrar tu solicitud. Inténtalo de nuevo o contacta a recepción directamente."
     except Exception:
-        return "Hubo un problema al escalar tu solicitud. Por favor, intenta de nuevo."
+        return "No fue posible registrar tu solicitud. Inténtalo de nuevo o contacta a recepción directamente."
 
 
 def get_reserva_by_id(reserva_id: int) -> dict | None:
     try:
-        conn = _get_db()
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM reservas WHERE id = ?", (reserva_id,))
-        row = cursor.fetchone()
-        conn.close()
+        client = get_connection()
+        result = client.execute("SELECT * FROM reservas WHERE id = ?", (reserva_id,))
+        row = _row_to_dict(result.rows[0]) if result.rows else None
+        client.close()
         if row:
-            return dict(row)
-        return None
-    except sqlite3.Error:
+            return row
         return None
     except Exception:
         return None

@@ -1,9 +1,4 @@
-import sqlite3
-from pathlib import Path
-
 from database.db import get_connection
-
-DB_PATH = Path(__file__).parent.parent / "hotel.db"
 
 HORARIOS_LIMPIEZA = {
     "limpia": "La habitación está limpia y lista para check-in.",
@@ -22,16 +17,16 @@ MENSAJE_ERROR_DB = (
 )
 
 
+def _row(row):
+    return row.asdict() if row else None
+
+
 def consultar_limpieza(habitacion_id: int) -> str:
     try:
-        conn = sqlite3.connect(str(DB_PATH))
-        conn.row_factory = sqlite3.Row
-        cursor = conn.cursor()
-        cursor.execute("SELECT * FROM habitaciones WHERE id = ?", (habitacion_id,))
-        habitacion = cursor.fetchone()
-        conn.close()
-    except sqlite3.Error:
-        return MENSAJE_ERROR_DB
+        client = get_connection()
+        result = client.execute("SELECT * FROM habitaciones WHERE id = ?", (habitacion_id,))
+        habitacion = _row(result.rows[0]) if result.rows else None
+        client.close()
     except Exception:
         return MENSAJE_ERROR_DB
 
@@ -54,16 +49,12 @@ def actualizar_estado_limpieza(habitacion_id: int, nuevo_estado: str) -> str:
         return f"Estado inválido. Usa uno de: {', '.join(validos)}"
 
     try:
-        conn = sqlite3.connect(str(DB_PATH))
-        cursor = conn.cursor()
-        cursor.execute(
+        client = get_connection()
+        client.execute(
             "UPDATE habitaciones SET estado_limpieza = ? WHERE id = ?",
             (nuevo_estado, habitacion_id),
         )
-        conn.commit()
-        conn.close()
+        client.close()
         return f"Estado de limpieza de la habitación {habitacion_id} actualizado a '{nuevo_estado}'."
-    except sqlite3.Error:
-        return MENSAJE_ERROR_DB
     except Exception:
         return MENSAJE_ERROR_DB
