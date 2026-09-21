@@ -24,10 +24,10 @@ def consultar_servicios() -> str:
 
     lineas = ["🎟️ **Servicios del Hotel Paraíso:**\n"]
     for i, servicio in enumerate(rows, 1):
-        nombre = servicio["nombre"]
-        descripcion = servicio["descripcion"]
-        horario = servicio["horario"]
-        ubicacion = servicio["ubicacion"]
+        nombre = servicio[1]
+        descripcion = servicio[2]
+        horario = servicio[3]
+        ubicacion = servicio[4]
         linea = f"{i}. *{nombre}* ({horario})\n   {descripcion}"
         if ubicacion:
             linea += f"\n   📍 {ubicacion}"
