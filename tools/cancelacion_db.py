@@ -1,9 +1,4 @@
-import sqlite3
-from pathlib import Path
-
 from database.db import get_connection
-
-DB_PATH = Path(__file__).parent.parent / "hotel.db"
 
 MENSAJE_SIN_RESERVA = (
     "No se encontró ninguna reserva con ese número o identificador. "
@@ -17,8 +12,7 @@ MENSAJE_ERROR_DB = (
 
 def cancelar_reserva_db(identificador: str) -> str:
     try:
-        conn = sqlite3.connect(str(DB_PATH))
-        conn.row_factory = sqlite3.Row
+        conn = get_connection()
         cursor = conn.cursor()
         digitos = ''.join(c for c in identificador if c.isdigit())
 
@@ -58,7 +52,5 @@ def cancelar_reserva_db(identificador: str) -> str:
             f"- Estado actualizado a: CANCELADA\n"
             f"- Si necesitas reprogramar, contacta a recepción."
         )
-    except sqlite3.Error:
-        return MENSAJE_ERROR_DB
-    except Exception:
+    except Exception as e:
         return MENSAJE_ERROR_DB

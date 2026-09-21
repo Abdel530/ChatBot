@@ -1,10 +1,6 @@
-import sqlite3
 from datetime import datetime
-from pathlib import Path
 
 from database.db import get_connection
-
-DB_PATH = Path(__file__).parent.parent / "hotel.db"
 
 MENSAJE_SIN_REGISTROS = (
     "No se encontró ninguna reserva con ese número o teléfono. "
@@ -18,8 +14,7 @@ MENSAJE_ERROR_DB = (
 
 def consultar_reserva(identificador: str) -> str:
     try:
-        conn = sqlite3.connect(str(DB_PATH))
-        conn.row_factory = sqlite3.Row
+        conn = get_connection()
         cursor = conn.cursor()
         digitos = ''.join(c for c in identificador if c.isdigit())
 
@@ -46,9 +41,7 @@ def consultar_reserva(identificador: str) -> str:
 
         rows = cursor.fetchall()
         conn.close()
-    except sqlite3.Error:
-        return MENSAJE_ERROR_DB
-    except Exception:
+    except Exception as e:
         return MENSAJE_ERROR_DB
 
     if not rows:
@@ -76,5 +69,5 @@ def consultar_reserva(identificador: str) -> str:
 def __parse_date(date_str: str) -> datetime:
     try:
         return datetime.fromisoformat(date_str)
-    except Exception:
+    except Exception as e:
         return datetime.now()

@@ -1,11 +1,7 @@
-import sqlite3
 import re
 from datetime import datetime
-from pathlib import Path
 
 from database.db import get_connection
-
-DB_PATH = Path(__file__).parent.parent / "hotel.db"
 
 TIPO_CATEGORIAS = {
     "Sencilla": "Sencilla",
@@ -55,12 +51,11 @@ def consultar_disponibilidad(fecha_entrada: str, fecha_salida: str) -> str:
         __validar_fechas(check_in, check_out)
     except ValueError as e:
         return str(e)
-    except Exception:
+    except Exception as e:
         return MENSAJE_ERROR_DB
 
     try:
-        conn = sqlite3.connect(str(DB_PATH))
-        conn.row_factory = sqlite3.Row
+        conn = get_connection()
         cursor = conn.cursor()
         cursor.execute(
             "SELECT id, tipo, numero FROM habitaciones WHERE estado_limpieza IN ('limpia', 'en_proceso') ORDER BY tipo"
@@ -72,9 +67,7 @@ def consultar_disponibilidad(fecha_entrada: str, fecha_salida: str) -> str:
         )
         reservas_activas = [row["habitacion_id"] for row in cursor.fetchall()]
         conn.close()
-    except sqlite3.Error:
-        return MENSAJE_ERROR_DB
-    except Exception:
+    except Exception as e:
         return MENSAJE_ERROR_DB
 
     habitaciones_libres = [h for h in habitaciones if h["id"] not in reservas_activas]
@@ -103,7 +96,7 @@ def upsert_huesped(huesped_id: int, nombre: str = None, apellidos: str = None,
                     cedula: str = None, nacionalidad: str = None,
                     email: str = None, telefono: str = None) -> int:
     try:
-        conn = sqlite3.connect(str(DB_PATH))
+        conn = get_connection()
         cursor = conn.cursor()
         cursor.execute("SELECT id FROM huespedes WHERE id = ?", (huesped_id,))
         existing = cursor.fetchone()
@@ -142,19 +135,15 @@ def upsert_huesped(huesped_id: int, nombre: str = None, apellidos: str = None,
         conn.commit()
         conn.close()
         return huesped_id
-    except sqlite3.Error:
-        return None
-    except Exception:
+    except Exception as e:
         return None
 
 
 def obtener_habitacion_disponible(tipo_habitacion: str, check_in: str, check_out: str) -> int | None:
     try:
-        conn = sqlite3.connect(str(DB_PATH))
-        conn.row_factory = sqlite3.Row
+        conn = get_connection()
         cursor = conn.cursor()
-        
-        # Consulta simplificada: busca por tipo y descarta habitaciones ocupadas en esas fechas
+
         query = """
             SELECT id FROM habitaciones 
             WHERE LOWER(tipo) LIKE LOWER(?) 
@@ -169,7 +158,7 @@ def obtener_habitacion_disponible(tipo_habitacion: str, check_in: str, check_out
         cursor.execute(query, (f"%{tipo_habitacion.strip()}%", check_in, check_out))
         row = cursor.fetchone()
         conn.close()
-        
+
         if row:
             return row["id"]
         return None
@@ -187,7 +176,7 @@ def registrar_reserva(huesped_id: int, tipo_habitacion: str, check_in: str, chec
         if not habitacion_id:
             return "Lo sentimos, no hay habitaciones disponibles para ese tipo en esas fechas."
 
-        conn = sqlite3.connect(str(DB_PATH))
+        conn = get_connection()
         cursor = conn.cursor()
 
         if nombre or apellidos or cedula or nacionalidad or email or telefono:
@@ -205,14 +194,10 @@ def registrar_reserva(huesped_id: int, tipo_habitacion: str, check_in: str, chec
                 )
 
         cursor.execute(
-            """
-            INSERT INTO reservas (
-                huesped_id, habitacion_id, check_in, check_out, politica, estado, importe_total
-            ) VALUES (?, ?, ?, ?, ?, 'CONFIRMADA', ?)
-            """,
-            (huesped_id, habitacion_id, check_in, check_out, politica or "Estándar", float(importe_total) if importe_total else 0.0)
+            "INSERT INTO reservas (huesped_id, habitacion_id, check_in, check_out, estado, importe_total) VALUES (?, ?, ?, ?, ?, ?)",
+            (huesped_id, habitacion_id, check_in, check_out, 'CONFIRMADA', float(importe_total) if importe_total else 0.0)
         )
-        
+
         reserva_id = cursor.lastrowid
 
         conn.commit()
@@ -227,9 +212,7 @@ def registrar_reserva(huesped_id: int, tipo_habitacion: str, check_in: str, chec
             f"- Estado: CONFIRMADA\n"
             f"- Recibirás un código de acceso en tu check-in."
         )
-    except sqlite3.Error:
-        return MENSAJE_ERROR_DB
-    except Exception:
+    except Exception as e:
         return MENSAJE_ERROR_DB
 
 

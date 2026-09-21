@@ -1,10 +1,6 @@
 import random
-import sqlite3
-from pathlib import Path
 
 from database.db import get_connection
-
-DB_PATH = Path(__file__).parent.parent / "hotel.db"
 
 MENSAJE_SIN_REGISTROS = (
     "No se encontró la habitación con los datos ingresados. "
@@ -18,8 +14,7 @@ MENSAJE_ERROR_DB = (
 
 def generar_codigo_acceso(habitacion_id: int) -> str:
     try:
-        conn = sqlite3.connect(str(DB_PATH))
-        conn.row_factory = sqlite3.Row
+        conn = get_connection()
         cursor = conn.cursor()
         cursor.execute("SELECT * FROM habitaciones WHERE id = ?", (habitacion_id,))
         habitacion = cursor.fetchone()
@@ -48,16 +43,13 @@ def generar_codigo_acceso(habitacion_id: int) -> str:
             f"- Código: **{codigo}**\n"
             f"- Guarde este código, será necesario para el check-in."
         )
-    except sqlite3.Error:
-        return MENSAJE_ERROR_DB
-    except Exception:
+    except Exception as e:
         return MENSAJE_ERROR_DB
 
 
 def get_codigo_acceso(habitacion_id: int) -> str | None:
     try:
-        conn = sqlite3.connect(str(DB_PATH))
-        conn.row_factory = sqlite3.Row
+        conn = get_connection()
         cursor = conn.cursor()
         cursor.execute(
             "SELECT codigo_acceso FROM reservas WHERE habitacion_id = ? AND estado != 'cancelada'",
@@ -68,7 +60,5 @@ def get_codigo_acceso(habitacion_id: int) -> str | None:
         if row and row["codigo_acceso"]:
             return row["codigo_acceso"]
         return None
-    except sqlite3.Error:
-        return None
-    except Exception:
+    except Exception as e:
         return None

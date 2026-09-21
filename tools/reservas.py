@@ -1,10 +1,6 @@
-import sqlite3
 from datetime import datetime, timedelta
-from pathlib import Path
 
 from database.db import get_connection
-
-DB_PATH = Path(__file__).parent.parent / "hotel.db"
 
 POLITICAS = {
     "flexible": {"dias_min": 1, "porcentaje": 0},
@@ -19,9 +15,7 @@ MENSAJE_ERROR_DB = (
 
 
 def _get_db():
-    conn = sqlite3.connect(str(DB_PATH))
-    conn.row_factory = sqlite3.Row
-    return conn
+    return get_connection()
 
 
 def buscar_reserva(telefono: str) -> str:
@@ -40,9 +34,7 @@ def buscar_reserva(telefono: str) -> str:
         )
         row = cursor.fetchone()
         conn.close()
-    except sqlite3.Error:
-        return MENSAJE_ERROR_DB
-    except Exception:
+    except Exception as e:
         return MENSAJE_ERROR_DB
 
     if not row:
@@ -67,9 +59,7 @@ def calcular_penalizacion(reserva_id: int) -> str:
         cursor.execute("SELECT * FROM reservas WHERE id = ?", (reserva_id,))
         row = cursor.fetchone()
         conn.close()
-    except sqlite3.Error:
-        return MENSAJE_ERROR_DB
-    except Exception:
+    except Exception as e:
         return MENSAJE_ERROR_DB
 
     if not row:
@@ -117,9 +107,7 @@ def confirmar_cancelacion(reserva_id: int) -> str:
         conn.commit()
         conn.close()
         return f"✅ Reserva {reserva_id} cancelada correctamente."
-    except sqlite3.Error:
-        return MENSAJE_ERROR_DB
-    except Exception:
+    except Exception as e:
         return MENSAJE_ERROR_DB
 
 
@@ -150,15 +138,13 @@ def registrar_llegada(reserva_id: int, hora_llegada: str) -> str:
             f"- Huésped: {row['nombre']}\n"
             f"- Habitación: {row['habitacion_id']}"
         )
-    except sqlite3.Error:
-        return MENSAJE_ERROR_DB
-    except Exception:
+    except Exception as e:
         return MENSAJE_ERROR_DB
 
 
 def escalar_recepcion(telefono: str, mensaje: str) -> str:
     try:
-        conn = sqlite3.connect(str(DB_PATH))
+        conn = get_connection()
         cursor = conn.cursor()
         cursor.execute(
             "INSERT INTO escalaciones (telefono, mensaje) VALUES (?, ?)",
@@ -170,10 +156,8 @@ def escalar_recepcion(telefono: str, mensaje: str) -> str:
             "Un agente de recepción le contactará en breve.\n"
             "Su mensaje ha sido registrado y será atendido lo antes posible."
         )
-    except sqlite3.Error:
+    except Exception as e:
         return "No fue posible registrar tu solicitud. Inténtalo de nuevo o contacta a recepción directamente."
-    except Exception:
-        return "Hubo un problema al escalar tu solicitud. Por favor, intenta de nuevo."
 
 
 def get_reserva_by_id(reserva_id: int) -> dict | None:
@@ -186,7 +170,5 @@ def get_reserva_by_id(reserva_id: int) -> dict | None:
         if row:
             return dict(row)
         return None
-    except sqlite3.Error:
-        return None
-    except Exception:
+    except Exception as e:
         return None
