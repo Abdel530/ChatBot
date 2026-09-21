@@ -49,56 +49,78 @@ def validar_hora_12h(hora_str: str) -> str:
 
 
 def consultar_disponibilidad(fecha_entrada: str, fecha_salida: str = None) -> str:
-    try:
-        if fecha_salida is None and "--" in fecha_entrada:
-            check_in, check_out = parsear_fechas(fecha_entrada)
-        else:
-            check_in = fecha_entrada
-            check_out = fecha_salida or ""
-        __validar_fechas(check_in, check_out)
-    except ValueError as e:
-        return str(e)
-    except Exception as e:
-        return MENSAJE_ERROR_DB
+  try:
+    if fecha_salida is None:
+      # Limpiamos guiones dobles y espacios extras
+      texto_limpio = fecha_entrada.replace("--", " ").replace("  ", " ").strip()
+      if " " in texto_limpio:
+        check_in, check_out = texto_limpio.split(maxsplit=1)
+      else:
+        check_in, check_out = parsear_fechas(fecha_entrada)
+    else:
+      check_in = fecha_entrada
+      check_out = fecha_salida or ""
 
-    try:
-        conn = get_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            "SELECT id, tipo, numero FROM habitaciones WHERE estado_limpieza IN ('limpia', 'en_proceso') ORDER BY tipo"
-        )
-        habitaciones = cursor.fetchall()
-        cursor.execute(
-            "SELECT habitacion_id FROM reservas WHERE estado = 'confirmada' AND check_out > ? AND check_in < ?",
-            (check_in, check_out),
-        )
-        reservas_activas = [row["habitacion_id"] for row in cursor.fetchall()]
-        conn.close()
-    except Exception as e:
-        print(f"Error en disponibilidad: {e}")
-        return MENSAJE_ERROR_DB
+    __validar_fechas(check_in, check_out)
+  except ValueError as e:
+    return str(e)
+  except Exception as e:
+    print(f"Error en validación de fechas: {e}")
+    return MENSAJE_ERROR_DB
 
-    habitaciones_libres = [h for h in habitaciones if h["id"] not in reservas_activas]
+  try:
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    # Query 1: Obtener habitaciones
+    cursor.execute(
+        "SELECT id, tipo, numero FROM habitaciones WHERE estado_limpieza IN"
+        " ('limpia', 'en_proceso') ORDER BY tipo"
+    )
+    habitaciones_raw = cursor.fetchall()
+
+    # Query 2: Obtener reservas activas
+    cursor.execute(
+        "SELECT habitacion_id FROM reservas WHERE estado = 'confirmada' AND"
+        " check_out > ? AND check_in < ?",
+        (check_in, check_out),
+    )
+    reservas_raw = cursor.fetchall()
+    conn.close()
+
+    # Mapeo usando índices numéricos de tupla
+    # habitaciones_raw -> row[0]=id, row[1]=tipo, row[2]=numero
+    reservas_activas = [row[0] for row in reservas_raw]
+    habitaciones_libres = [h for h in habitaciones_raw if h[0] not in reservas_activas]
+
     conteo = {}
     for h in habitaciones_libres:
-        tipo = h["tipo"]
-        categoria = TIPO_CATEGORIAS.get(tipo, tipo)
-        conteo[categoria] = conteo.get(categoria, 0) + 1
+      tipo = h[1]  # Índice 1 corresponde a 'tipo'
+      categoria = TIPO_CATEGORIAS.get(tipo, tipo)
+      conteo[categoria] = conteo.get(categoria, 0) + 1
 
-    tipos_ordenados = ["Sencilla", "Doble", "Triple", "Cuádruple", "Suite"]
-    lineas = ["🏨 **Disponibilidad de habitaciones:**\n"]
-    hay_disponibilidad = False
-    for tipo in tipos_ordenados:
-        if tipo in conteo:
-            lineas.append(f"• {conteo[tipo]} Habitaciones {tipo.lower()}")
-            hay_disponibilidad = True
-        else:
-            lineas.append(f"• 0 Habitaciones {tipo.lower()} (Agotado)")
+  except Exception as e:
+    print(f"Error en consulta DB de disponibilidad: {e}")
+    return MENSAJE_ERROR_DB
 
-    if not hay_disponibilidad or all(v == 0 for v in conteo.values()):
-        return "Lo sentimos, no hay habitaciones disponibles para esas fechas. Por favor intenta con otro rango de fechas."
-    return "\n".join(lineas)
+  tipos_ordenados = ["Sencilla", "Doble", "Triple", "Cuádruple", "Suite"]
+  lineas = ["🏨 **Disponibilidad de habitaciones:**\n"]
+  hay_disponibilidad = False
 
+  for tipo in tipos_ordenados:
+    if tipo in conteo:
+      lineas.append(f"• {conteo[tipo]} Habitaciones {tipo.lower()}")
+      hay_disponibilidad = True
+    else:
+      lineas.append(f"• 0 Habitaciones {tipo.lower()} (Agotado)")
+
+  if not hay_disponibilidad or all(v == 0 for v in conteo.values()):
+    return (
+        "Lo sentimos, no hay habitaciones disponibles para esas fechas. Por"
+        " favor intenta con otro rango de fechas."
+    )
+
+  return "\n".join(lineas)
 
 def upsert_huesped(huesped_id: int, nombre: str = None, apellidos: str = None,
                     cedula: str = None, nacionalidad: str = None,
