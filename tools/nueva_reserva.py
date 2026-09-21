@@ -122,15 +122,24 @@ def consultar_disponibilidad(fecha_entrada: str, fecha_salida: str = None) -> st
 
   return "\n".join(lineas)
 
-def upsert_huesped(huesped_id: int, nombre: str = None, apellidos: str = None,
-                    cedula: str = None, nacionalidad: str = None,
-                    email: str = None, telefono: str = None) -> int:
+def upsert_huesped(
+    nombre: str = None,
+    apellidos: str = None,
+    cedula: str = None,
+    nacionalidad: str = None,
+    email: str = None,
+    telefono: str = None,
+) -> int:
     try:
         conn = get_connection()
         cursor = conn.cursor()
-        cursor.execute("SELECT id FROM huespedes WHERE id = ?", (huesped_id,))
+        
+        # Opcional: Buscar primero por cédula o teléfono si ya existe
+        cursor.execute("SELECT id FROM huespedes WHERE cedula = ? OR telefono = ?", (cedula, telefono))
         existing = cursor.fetchone()
+        
         if existing:
+            huesped_id = existing[0] if isinstance(existing, tuple) else existing["id"]
             set_clauses = []
             params = []
             if nombre is not None:
@@ -151,6 +160,7 @@ def upsert_huesped(huesped_id: int, nombre: str = None, apellidos: str = None,
             if telefono is not None:
                 set_clauses.append("telefono = ?")
                 params.append(telefono)
+                
             if set_clauses:
                 params.append(huesped_id)
                 cursor.execute(
@@ -158,18 +168,20 @@ def upsert_huesped(huesped_id: int, nombre: str = None, apellidos: str = None,
                     params,
                 )
         else:
+            # NO pasamos el ID, dejamos que Turso/SQLite lo incremente solo
             cursor.execute(
-                "INSERT INTO huespedes (id, nombre, apellidos, cedula, nacionalidad, email, telefono) VALUES (?, ?, ?, ?, ?, ?, ?)",
-                (huesped_id, nombre or f"Huésped_{huesped_id}", apellidos or "", cedula or "", nacionalidad or "", email or "", telefono or ""),
+                "INSERT INTO huespedes (nombre, apellidos, cedula, nacionalidad, email, telefono) VALUES (?, ?, ?, ?, ?, ?)",
+                (nombre or "", apellidos or "", cedula or "", nacionalidad or "", email or "", telefono or ""),
             )
+            huesped_id = cursor.lastrowid # Obtenemos el ID autogenerado
+
         conn.commit()
         conn.close()
         return huesped_id
     except Exception as e:
-        print(f'Error al insertar en huespedes: {e}')
+        print(f'Error al procesar huésped: {e}')
         raise
-
-
+    
 def obtener_habitacion_disponible(tipo_habitacion: str, check_in: str, check_out: str) -> int | None:
     try:
         conn = get_connection()
