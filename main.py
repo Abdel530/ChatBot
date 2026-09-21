@@ -412,7 +412,7 @@ async def _procesar_estado_reserva(texto: str, phone: str) -> str:
         set_reservation_state(phone, RESERVATION_STATE_PERSONAL)
         set_reservation_data(phone, "paso_personal", 0)
 
-        return "¡Habitación disponible para esas fechas! Por favor, indícame tu Nombre (Paso 1/7)."
+        return "¡Habitación disponible para esas fechas! Por favor, indícame tu Nombre (Paso 1/6)."
 
     if estado == RESERVATION_STATE_PERSONAL:
         paso = get_reservation_data(phone, "paso_personal")
@@ -426,24 +426,24 @@ async def _procesar_estado_reserva(texto: str, phone: str) -> str:
         if paso == 0:
             set_reservation_data(phone, "nombre", texto)
             set_reservation_data(phone, "paso_personal", 1)
-            return "📋 Paso 2/7: Apellidos\nEnvíame tus apellidos."
+            return "📋 Paso 2/6: Apellidos\nEnvíame tus apellidos."
         elif paso == 1:
             set_reservation_data(phone, "apellidos", texto)
             set_reservation_data(phone, "paso_personal", 2)
-            return "🪪 Paso 3/7: Cédula / Pasaporte\nEnvíame tu número de cédula o pasaporte (solo números, sin puntos ni espacios).\nEjemplo: 23445676"
+            return "🪪 Paso 3/6: Cédula / Pasaporte\nEnvíame tu número de cédula o pasaporte (solo números, sin puntos ni espacios).\nEjemplo: 23445676"
         elif paso == 2:
             cedula_limpia = texto.replace('.', '').replace(' ', '').strip()
             set_reservation_data(phone, "cedula", cedula_limpia)
             set_reservation_data(phone, "paso_personal", 3)
-            return "🌍 Paso 4/7: Nacionalidad\nEnvíame tu nacionalidad."
+            return "🌍 Paso 4/6: Nacionalidad\nEnvíame tu nacionalidad."
         elif paso == 3:
             set_reservation_data(phone, "nacionalidad", texto)
             set_reservation_data(phone, "paso_personal", 4)
-            return "📧 Paso 5/7: Correo Electrónico\nEnvíame tu correo electrónico."
+            return "📧 Paso 5/6: Correo Electrónico\nEnvíame tu correo electrónico."
         elif paso == 4:
             set_reservation_data(phone, "email", texto)
             set_reservation_data(phone, "paso_personal", 5)
-            return "📱 Paso 6/7: Número Telefónico de Contacto\nEnvíame tu número de teléfono."
+            return "📱 Paso 6/6: Número Telefónico de Contacto\nEnvíame tu número de teléfono."
         elif paso == 5:
             set_reservation_data(phone, "telefono", texto)
             check_in = get_reservation_data(phone, "check_in")
