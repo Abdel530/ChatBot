@@ -1,12 +1,8 @@
-import sqlite3
 from datetime import datetime, timedelta
 from pathlib import Path
 
 from database.db import get_connection
 from database.models import SQL_TABLES
-
-BASE_DIR = Path(__file__).parent.parent
-DB_PATH = BASE_DIR / "hotel.db"
 
 HUESPEDES_DATA = [
     (1, "34600123456", "Juan", "Pérez", "12345678A", "Mexicana", "juan@email.com"),
@@ -53,12 +49,20 @@ SERVICIOS_DATA = [
 
 
 def seed():
-    if DB_PATH.exists():
-        DB_PATH.unlink()
-
-    conn = sqlite3.connect(str(DB_PATH))
+    # Usamos get_connection() para apuntar directamente a Turso DB
+    conn = get_connection()
     cursor = conn.cursor()
-    cursor.executescript(SQL_TABLES)
+
+    # Limpiar tablas existentes para evitar conflictos de columnas antiguas
+    cursor.execute("DROP TABLE IF EXISTS reservas;")
+    cursor.execute("DROP TABLE IF EXISTS habitaciones;")
+    cursor.execute("DROP TABLE IF EXISTS huespedes;")
+    cursor.execute("DROP TABLE IF EXISTS servicios;")
+
+    # Volver a crear con SQL_TABLES
+    for statement in SQL_TABLES.split(";"):
+        if statement.strip():
+            cursor.execute(statement)
 
     cursor.executemany(
         "INSERT OR IGNORE INTO huespedes (id, telefono, nombre, apellidos, cedula, nacionalidad, email) VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -78,12 +82,7 @@ def seed():
     )
     conn.commit()
     conn.close()
-    print(f"Base de datos inicializada en {DB_PATH}")
-    print("Datos de prueba insertados:")
-    print("  - 5 huéspedes")
-    print("  - 10 habitaciones")
-    print("  - 3 reservas")
-    print("  - 7 servicios")
+    print("Base de datos en Turso inicializada y poblada exitosamente con datos de prueba.")
 
 
 if __name__ == "__main__":
