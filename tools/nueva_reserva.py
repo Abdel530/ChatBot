@@ -166,7 +166,8 @@ def upsert_huesped(huesped_id: int, nombre: str = None, apellidos: str = None,
         conn.close()
         return huesped_id
     except Exception as e:
-        return None
+        print(f'Error al insertar en huespedes: {e}')
+        raise
 
 
 def obtener_habitacion_disponible(tipo_habitacion: str, check_in: str, check_out: str) -> int | None:
