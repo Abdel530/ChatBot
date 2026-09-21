@@ -1,10 +1,11 @@
-from database.connection import get_db
+import libsql
+from config import settings
 
-DB_PATH = None  # Mantenido por compatibilidad antigua
 
 def get_connection():
-    """
-    Retorna el cliente sincrónico de Turso (LibSQL).
-    Reemplaza la conexión local de SQLite.
-    """
-    return get_db()
+  """Retorna una conexión nativa a Turso DB usando la librería libsql."""
+  conn = libsql.connect(
+      database=settings.turso_database_url,
+      auth_token=settings.turso_auth_token,
+  )
+  return conn
