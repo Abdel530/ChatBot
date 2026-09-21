@@ -301,6 +301,8 @@ async def receive_webhook(request: Request):
             try:
                 resultado = await _procesar_estado_reserva(text, phone)
                 await send_whatsapp_message(phone, resultado)
+                if resultado == "Muchas gracias por su registro":
+                    await send_interactive_list(phone)
             except Exception as e:
                 print(f"[POST /webhook] {phone}: Error en estado de reserva: {e}", flush=True)
                 try:
