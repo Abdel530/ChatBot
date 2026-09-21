@@ -31,16 +31,17 @@ def registrar_huesped(
         (nombre, apellidos, cedula, telefono, email, nacionalidad),
     )
     conn.commit()
-    conn.close()
 
     # Obtener el ID del huésped recién creado
     cursor.execute("SELECT id FROM huespedes WHERE cedula = ?", (cedula,))
     row = cursor.fetchone()
-    return row[0] if row else None
+    hueped_id = row[0] if row else None
+    conn.close()
+    return hueped_id
   except Exception as e:
     conn.close()
-    print(f"Error al registrar huésped: {e}")
-    return None
+    print(f'❌ ERROR AL INSERTAR HUESPED: {e}')
+    raise
 
 
 def registrar_llegada_db(identificador: str) -> str:
