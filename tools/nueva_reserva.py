@@ -244,7 +244,8 @@ def registrar_reserva(huesped_id: int, tipo_habitacion: str, check_in: str, chec
             f"- Recibirás un código de acceso en tu check-in."
         )
     except Exception as e:
-        return MENSAJE_ERROR_DB
+        print(f'Error al insertar en huespedes: {e}')
+        raise
 
 
 def __validar_fechas(fecha_entrada: str, fecha_salida: str) -> None:
