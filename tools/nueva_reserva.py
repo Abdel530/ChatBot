@@ -27,12 +27,16 @@ MENSAJE_ERROR_DB = (
 )
 
 
-def ddmmyyyy_to_yyyymmdd(date_str: str) -> str:
-    try:
-        dt = datetime.strptime(date_str.strip(), "%Y-%m-%d")
-        return dt.strftime("%Y-%m-%d")
-    except ValueError:
-        raise ValueError(f"Formato de fecha inválido: '{date_str}'. Usa YYYY-MM-DD (ejemplo: 2026-09-25).")
+def parsear_fechas(fecha_str: str) -> tuple:
+    texto_limpio = fecha_str.replace("--", " ").replace("  ", " ")
+    partes = texto_limpio.strip().split()
+    if len(partes) != 2:
+        raise ValueError(
+            f"Formato de fechas inválido: '{fecha_str}'. Usa el formato YYYY-MM-DD -- YYYY-MM-DD."
+        )
+    check_in = partes[0]
+    check_out = partes[1]
+    return check_in, check_out
 
 
 def validar_hora_12h(hora_str: str) -> str:
@@ -44,10 +48,13 @@ def validar_hora_12h(hora_str: str) -> str:
     return hora_str.strip()
 
 
-def consultar_disponibilidad(fecha_entrada: str, fecha_salida: str) -> str:
+def consultar_disponibilidad(fecha_entrada: str, fecha_salida: str = None) -> str:
     try:
-        check_in = fecha_entrada
-        check_out = fecha_salida
+        if fecha_salida is None and "--" in fecha_entrada:
+            check_in, check_out = parsear_fechas(fecha_entrada)
+        else:
+            check_in = fecha_entrada
+            check_out = fecha_salida or ""
         __validar_fechas(check_in, check_out)
     except ValueError as e:
         return str(e)
@@ -68,6 +75,7 @@ def consultar_disponibilidad(fecha_entrada: str, fecha_salida: str) -> str:
         reservas_activas = [row["habitacion_id"] for row in cursor.fetchall()]
         conn.close()
     except Exception as e:
+        print(f"Error en disponibilidad: {e}")
         return MENSAJE_ERROR_DB
 
     habitaciones_libres = [h for h in habitaciones if h["id"] not in reservas_activas]
@@ -225,4 +233,4 @@ def __validar_fechas(fecha_entrada: str, fecha_salida: str) -> None:
 
 
 def listar_tipos_habitaciones() -> str:
-    return "📅 **Tipos de habitación disponibles:**\n• Sencilla\n• Doble\n• Triple\n• Cuádruple\n• Suite\n\nEnvíame tus fechas de entrada y salida en formato DD-MM-YYYY.\nEjemplo: 25-09-2026 -- 28-09-2026"
+    return "📅 **Tipos de habitación disponibles:**\n• Sencilla\n• Doble\n• Triple\n• Cuádruple\n• Suite\n\nEnvíame tus fechas en formato YYYY-MM-DD -- YYYY-MM-DD.\nEjemplo: 2026-09-25 -- 2026-10-25"
