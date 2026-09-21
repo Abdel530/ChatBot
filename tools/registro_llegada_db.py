@@ -31,12 +31,14 @@ def registrar_huesped(
         (nombre, apellidos, cedula, telefono, email, nacionalidad),
     )
     conn.commit()
+    conn.close()
 
     # Obtener el ID del huésped recién creado
     cursor.execute("SELECT id FROM huespedes WHERE cedula = ?", (cedula,))
     row = cursor.fetchone()
     return row[0] if row else None
   except Exception as e:
+    conn.close()
     print(f"Error al registrar huésped: {e}")
     return None
 
@@ -78,6 +80,7 @@ def registrar_llegada_db(identificador: str) -> str:
         (hora_actual, reserva_id),
     )
     conn.commit()
+    conn.close()
 
     cursor.execute(
         "SELECT h.nombre, h.apellidos FROM reservas r JOIN huespedes h ON"
@@ -103,5 +106,6 @@ def registrar_llegada_db(identificador: str) -> str:
         f"- Tu registro ha sido guardado en nuestros sistemas."
     )
   except Exception as e:
+    conn.close()
     print(f"Error en registrar_llegada_db: {e}")
     return MENSAJE_ERROR_DB
