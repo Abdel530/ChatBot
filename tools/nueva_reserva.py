@@ -203,7 +203,7 @@ def obtener_habitacion_disponible(tipo_habitacion: str, check_in: str, check_out
         conn.close()
 
         if row:
-            return row["id"]
+            return row[0]
         return None
     except Exception as e:
         print(f"❌ Error en obtener_habitacion_disponible: {e}", flush=True)
@@ -238,7 +238,7 @@ def registrar_reserva(huesped_id: int, tipo_habitacion: str, check_in: str, chec
 
         cursor.execute(
             "INSERT INTO reservas (huesped_id, habitacion_id, check_in, check_out, estado, importe_total) VALUES (?, ?, ?, ?, ?, ?)",
-            (huesped_id, habitacion_id, check_in, check_out, 'CONFIRMADA', float(importe_total) if importe_total else 0.0)
+            (huesped_id, habitacion_id, check_in, check_out, 'confirmada', float(importe_total) if importe_total else 0.0)
         )
 
         reserva_id = cursor.lastrowid

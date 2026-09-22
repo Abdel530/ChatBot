@@ -23,11 +23,11 @@ def generar_codigo_acceso(habitacion_id: int) -> str:
             conn.close()
             return MENSAJE_SIN_REGISTROS
 
-        if habitacion["estado_limpieza"] not in ("limpia", "en_proceso"):
+        if habitacion[3] not in ("limpia", "en_proceso"):
             conn.close()
             return (
-                f"La habitación {habitacion['numero']} no está lista para check-in "
-                f"(estado: {habitacion['estado_limpieza']})."
+                f"La habitación {habitacion[1]} no está lista para check-in "
+                f"(estado: {habitacion[3]})."
             )
 
         codigo = str(random.randint(100000, 999999))
@@ -39,7 +39,7 @@ def generar_codigo_acceso(habitacion_id: int) -> str:
         conn.close()
 
         return (
-            f"✅ Código de acceso generado para la habitación {habitacion['numero']}:\n"
+            f"✅ Código de acceso generado para la habitación {habitacion[1]}:\n"
             f"- Código: **{codigo}**\n"
             f"- Guarde este código, será necesario para el check-in."
         )
@@ -57,8 +57,8 @@ def get_codigo_acceso(habitacion_id: int) -> str | None:
         )
         row = cursor.fetchone()
         conn.close()
-        if row and row["codigo_acceso"]:
-            return row["codigo_acceso"]
+        if row and row[0]:
+            return row[0]
         return None
     except Exception as e:
         return None

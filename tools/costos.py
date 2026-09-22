@@ -23,10 +23,10 @@ def consultar_costo_habitacion(habitacion_id: int) -> str:
     if not habitacion:
         return MENSAJE_SIN_REGISTROS
 
-    costo = habitacion["costo_operativo_dia"]
+    costo = habitacion[4]
     return (
-        f"💰 Coste operativo habitación {habitacion['numero']}:\n"
-        f"- Tipo: {habitacion['tipo']}\n"
+        f"💰 Coste operativo habitación {habitacion[1]}:\n"
+        f"- Tipo: {habitacion[2]}\n"
         f"- Costo operativo/día: {costo:.2f}€\n"
-        f"- Estado: {habitacion['estado_limpieza']}"
+        f"- Estado: {habitacion[3]}"
     )

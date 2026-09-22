@@ -49,18 +49,18 @@ def consultar_reserva(identificador: str) -> str:
 
     lineas = []
     for row in rows:
-        check_in = __parse_date(row["check_in"])
+        check_in = __parse_date(row[1])
         dias_restantes = (check_in - datetime.now()).days
-        nombre_completo = f"{row['nombre']} {row['apellidos']}".strip()
-        hora_llegada = row["hora_llegada"] or "No especificada"
+        nombre_completo = f"{row[7]} {row[8]}".strip()
+        hora_llegada = row[6] or "No especificada"
         lineas.append(
-            f"✅ Reserva #{row['id']}:\n"
+            f"✅ Reserva #{row[0]}:\n"
             f"- Nombre completo: {nombre_completo}\n"
-            f"- Teléfono: {row['telefono']}\n"
-            f"- Tipo de habitación: {row['habitacion_tipo']}\n"
-            f"- Fechas de estancia: {row['check_in']} al {row['check_out']} ({dias_restantes} días restantes)\n"
+            f"- Teléfono: {row[10]}\n"
+            f"- Tipo de habitación: {row[12]}\n"
+            f"- Fechas de estancia: {row[1]} al {row[2]} ({dias_restantes} días restantes)\n"
             f"- Hora estimada de llegada: {hora_llegada}\n"
-            f"- Estado: {row['estado']}"
+            f"- Estado: {row[5]}"
         )
 
     return "\n\n".join(lineas)

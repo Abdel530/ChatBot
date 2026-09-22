@@ -25,11 +25,11 @@ def buscar_reserva(telefono: str) -> str:
         cursor.execute(
             """SELECT r.id, r.check_in, r.check_out, r.politica, r.importe_total, r.estado,
                       h.nombre, hab.numero as habitacion_numero
-               FROM reservas r
-               JOIN huespedes h ON r.huesped_id = h.id
-               JOIN habitaciones hab ON r.habitacion_id = hab.id
-               WHERE h.telefono = ? AND r.estado != 'cancelada'
-               ORDER BY r.check_in DESC LIMIT 1""",
+                FROM reservas r
+                JOIN huespedes h ON r.huesped_id = h.id
+                JOIN habitaciones hab ON r.habitacion_id = hab.id
+                WHERE h.telefono = ? AND r.estado != 'cancelada'
+                ORDER BY r.check_in DESC LIMIT 1""",
             (telefono,),
         )
         row = cursor.fetchone()
@@ -40,15 +40,15 @@ def buscar_reserva(telefono: str) -> str:
     if not row:
         return f"No se encontró una reserva activa para el teléfono {telefono}."
 
-    dias_restantes = (datetime.fromisoformat(row["check_in"]) - datetime.now()).days
+    dias_restantes = (datetime.fromisoformat(row[1]) - datetime.now()).days
     return (
-        f"Reserva encontrada para {row['nombre']}:\n"
-        f"- Habitación: {row['habitacion_numero']}\n"
-        f"- Check-in: {row['check_in']} ({dias_restantes} días restantes)\n"
-        f"- Check-out: {row['check_out']}\n"
-        f"- Política: {row['politica']}\n"
-        f"- Importe total: {row['importe_total']:.2f}€\n"
-        f"- Estado: {row['estado']}"
+        f"Reserva encontrada para {row[6]}:\n"
+        f"- Habitación: {row[7]}\n"
+        f"- Check-in: {row[1]} ({dias_restantes} días restantes)\n"
+        f"- Check-out: {row[2]}\n"
+        f"- Política: {row[3]}\n"
+        f"- Importe total: {row[4]:.2f}€\n"
+        f"- Estado: {row[5]}"
     )
 
 
@@ -65,9 +65,9 @@ def calcular_penalizacion(reserva_id: int) -> str:
     if not row:
         return f"No se encontró la reserva con ID {reserva_id}."
 
-    check_in = datetime.fromisoformat(row["check_in"])
+    check_in = datetime.fromisoformat(row[3])
     dias_restantes = (check_in - datetime.now()).days
-    politica = row["politica"]
+    politica = row[5]
     politica_info = POLITICAS.get(politica, {"dias_min": 999, "porcentaje": 100})
 
     if dias_restantes >= politica_info["dias_min"]:
@@ -77,14 +77,14 @@ def calcular_penalizacion(reserva_id: int) -> str:
             f"Política aplicable: {politica}"
         )
 
-    importe = row["importe_total"] * politica_info["porcentaje"] / 100
+    importe = row[7] * politica_info["porcentaje"] / 100
     return (
         f"⚠️ Penalización por cancelación - Reserva {reserva_id}:\n"
         f"- Política: {politica}\n"
         f"- Porcentaje: {politica_info['porcentaje']}%\n"
         f"- Importe de la penalización: {importe:.2f}€\n"
         f"- Días restantes hasta check-in: {dias_restantes}\n"
-        f"- Importe total de la reserva: {row['importe_total']:.2f}€"
+        f"- Importe total de la reserva: {row[7]:.2f}€"
     )
 
 
@@ -99,7 +99,7 @@ def confirmar_cancelacion(reserva_id: int) -> str:
             conn.close()
             return f"No se encontró la reserva con ID {reserva_id}."
 
-        if row["estado"] == "cancelada":
+        if row[0] == "cancelada":
             conn.close()
             return f"La reserva {reserva_id} ya está cancelada."
 
@@ -135,8 +135,8 @@ def registrar_llegada(reserva_id: int, hora_llegada: str) -> str:
         return (
             f"✅ Hora de llegada registrada para la reserva {reserva_id}.\n"
             f"- Hora estimada: {hora_llegada}\n"
-            f"- Huésped: {row['nombre']}\n"
-            f"- Habitación: {row['habitacion_id']}"
+            f"- Huésped: {row[10]}\n"
+            f"- Habitación: {row[2]}"
         )
     except Exception as e:
         return MENSAJE_ERROR_DB
@@ -168,7 +168,7 @@ def get_reserva_by_id(reserva_id: int) -> dict | None:
         row = cursor.fetchone()
         conn.close()
         if row:
-            return dict(row)
+            return {"id": row[0], "huesped_id": row[1], "habitacion_id": row[2], "check_in": row[3], "check_out": row[4], "politica": row[5], "estado": row[6], "importe_total": row[7], "codigo_acceso": row[8], "hora_llegada": row[9]}
         return None
     except Exception as e:
         return None

@@ -36,8 +36,8 @@ def cancelar_reserva_db(identificador: str) -> str:
             conn.close()
             return MENSAJE_SIN_RESERVA
 
-        reserva_id = row["id"]
-        estado = row["estado"]
+        reserva_id = row[0]
+        estado = row[1]
 
         if estado == "cancelada":
             conn.close()

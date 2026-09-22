@@ -35,7 +35,7 @@ def registrar_huesped(
     # Obtener el ID del huésped recién creado
     cursor.execute("SELECT id FROM huespedes WHERE cedula = ?", (cedula,))
     row = cursor.fetchone()
-    hueped_id = row[0] if row else None
+    huesped_id = row[0] if row else None
     conn.close()
     return hueped_id
   except Exception as e:
@@ -81,7 +81,6 @@ def registrar_llegada_db(identificador: str) -> str:
         (hora_actual, reserva_id),
     )
     conn.commit()
-    conn.close()
 
     cursor.execute(
         "SELECT h.nombre, h.apellidos FROM reservas r JOIN huespedes h ON"
@@ -89,6 +88,7 @@ def registrar_llegada_db(identificador: str) -> str:
         (reserva_id,),
     )
     nombre_row = cursor.fetchone()
+    conn.close()
 
     if nombre_row:
       nombre = (

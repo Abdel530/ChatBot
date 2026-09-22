@@ -30,11 +30,11 @@ def consultar_limpieza(habitacion_id: int) -> str:
     if not habitacion:
         return MENSAJE_SIN_REGISTROS
 
-    estado = habitacion["estado_limpieza"]
+    estado = habitacion[3]
     mensaje_base = HORARIOS_LIMPIEZA.get(estado, f"Estado actual: {estado}")
 
     return (
-        f"🏨 Habitación {habitacion['numero']} ({habitacion['tipo']}):\n"
+        f"🏨 Habitación {habitacion[1]} ({habitacion[2]}):\n"
         f"- Estado de limpieza: {estado}\n"
         f"- {mensaje_base}"
     )
