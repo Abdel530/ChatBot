@@ -181,7 +181,7 @@ def upsert_huesped(
     except Exception as e:
         print(f'Error al procesar huésped: {e}')
         raise
-
+    
 def obtener_habitacion_disponible(tipo_habitacion: str, check_in: str, check_out: str) -> int | None:
     try:
         conn = get_connection()
@@ -203,7 +203,7 @@ def obtener_habitacion_disponible(tipo_habitacion: str, check_in: str, check_out
         conn.close()
 
         if row:
-            return row[0]  # Cambiado de row["id"] a row[0]
+            return row["id"]
         return None
     except Exception as e:
         print(f"❌ Error en obtener_habitacion_disponible: {e}", flush=True)
